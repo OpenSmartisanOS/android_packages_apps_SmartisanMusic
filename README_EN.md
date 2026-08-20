@@ -19,7 +19,7 @@ Smartisan never saw itself as a company concerned with visuals alone. A beautifu
 
 Smartisan Music is one of the clearest expressions of that idea. Its turntable, tonearm, scratching, and vinyl crackle make digital music feel tangible, while songs, albums, and the library remain calm and legible. The physical playfulness should never come at the expense of playback or organization; what deserves to be preserved is the balance between texture, order, and utility.
 
-Smartisan OS has left the stage, so this project uses Smartisan Music 8.1.0 as its visual and interaction reference and rebuilds it with a modern Android stack. The interface retains the original XML layouts, drawables, NinePatch assets, selectors, animation timing, and view hierarchy wherever practical. Media scanning, background playback, queues, favorites, playlists, and persistence are rebuilt entirely on public Android APIs. The app reads and plays audio stored on the device and contains no built-in content catalog, account system, or media distribution service.
+Smartisan OS has left the stage, so this project uses Smartisan Music 8.1.0 as its visual and interaction reference and rebuilds it with a modern Android stack. The interface retains the original XML layouts, drawables, NinePatch assets, selectors, animation timing, and view hierarchy wherever practical. Media scanning, background playback, queues, favorites, playlists, and persistence are rebuilt entirely on public Android APIs. The current UI and playback service still read only audio stored on the device. The project now contains an isolated NetEase Cloud Music API foundation, but it is not yet connected to the UI, account flow, or online playback.
 
 ## Improvements over the original
 
@@ -52,9 +52,9 @@ Smartisan OS has left the stage, so this project uses Smartisan Music 8.1.0 as i
 - External audio opening, audio-file sharing, and MediaStore-backed media deletion
 - Custom artist separators, bottom-navigation order, and pinned items
 
-## Local media and permissions
+## Network, local media, and permissions
 
-The final app manifest does not contain the `INTERNET` permission. The app does not depend on a network connection and does not upload songs, artwork, lyrics, or library metadata.
+The app declares `INTERNET` for the future NetEase search, metadata, lyric, and stream-resolution integration. This version does not create the API client or make a request at startup, and the existing UI and playback service remain local-only. If a user explicitly imports a login Cookie in a future UI, it is encrypted on-device with Android Keystore and sent only to allowlisted NetEase domains. Local songs, artwork, lyrics, and library metadata are not uploaded.
 
 - Android 13 and later use `READ_MEDIA_AUDIO` to read device audio. Android 8.1 through Android 12 use the version-limited `READ_EXTERNAL_STORAGE` permission.
 - `FOREGROUND_SERVICE_MEDIA_PLAYBACK` is used only to keep user-initiated playback and its media notification active in the background.
@@ -82,6 +82,7 @@ Album artwork, artist information, and music content visible in screenshots rema
 | Playback | Media3 `1.10.1`, ExoPlayer, MediaLibraryService, MediaSession |
 | State | Lifecycle, StateFlow, Coroutines |
 | Storage | Room `2.8.4`, DataStore `1.2.1`, MediaStore |
+| Network foundation | Isolated `:netease-api` module, OkHttp, Gson, NetEase EAPI |
 | SDK | `minSdk 27` / `targetSdk 36` / `compileSdk 37` |
 
 ## Build
@@ -107,6 +108,8 @@ The release APK is written to `app/build/outputs/apk/release/SmartisanMusic-Revi
 Thanks to [People-11](https://github.com/People-11/) for [SmartisanOS_APP_Port](https://github.com/People-11/SmartisanOS_APP_Port/). This project used its `Music_8.1.0.apk` as a reverse-engineering reference for original resources, page hierarchy, visual details, animation timing, and interaction behavior.
 
 People-11's work allows the original app to continue running on non-Smartisan devices. This project instead rebuilds media scanning, playback services, the library, queues, and persistence, using modern public Android APIs for system integration while preserving the original design language.
+
+The NetEase API foundation is adapted from [GuitaristRin/Ncrust](https://github.com/GuitaristRin/Ncrust) under the MIT License. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the complete notice.
 
 ## Disclaimer
 

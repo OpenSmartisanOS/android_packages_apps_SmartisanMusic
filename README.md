@@ -19,7 +19,7 @@
 
 锤子音乐是这种理念很完整的一次表达。黑胶唱盘、唱针、搓碟和爆豆音让数字音乐重新变成可以触碰的东西，歌曲、专辑和资料库又始终保持清楚、克制。它有拟物的趣味，却不该为了表演牺牲播放和管理；真正值得保留的，正是质感、秩序与实用性之间的平衡。
 
-Smartisan OS 已经退出历史舞台，本项目因此以锤子音乐 8.1.0 为视觉与交互基准，使用现代 Android 技术栈重新实现这款本地音乐播放器。界面尽可能保留原版 XML、Drawable、NinePatch、Selector、动画节奏与控件层级，媒体扫描、后台播放、队列、收藏、播放列表和数据持久化则全部基于公开 Android API 重写。应用只读取和播放设备上的音频文件，不内置内容曲库、账号体系或媒体分发服务。
+Smartisan OS 已经退出历史舞台，本项目因此以锤子音乐 8.1.0 为视觉与交互基准，使用现代 Android 技术栈重新实现这款本地音乐播放器。界面尽可能保留原版 XML、Drawable、NinePatch、Selector、动画节奏与控件层级，媒体扫描、后台播放、队列、收藏、播放列表和数据持久化则全部基于公开 Android API 重写。当前界面和播放服务仍只读取设备上的音频文件；工程已包含独立的网易云 API 基础模块，但尚未接入前端、账号页面或在线播放链路。
 
 ## 相较原版的改进
 
@@ -52,9 +52,9 @@ Smartisan OS 已经退出历史舞台，本项目因此以锤子音乐 8.1.0 为
 - 外部音频打开、音频文件分享和 MediaStore 媒体删除
 - 自定义艺术家分隔符、底部导航顺序与固定项
 
-## 本地媒体与权限
+## 网络、本地媒体与权限
 
-应用的最终 Manifest 不包含 `INTERNET` 权限，运行时不依赖网络，也不会上传歌曲、封面、歌词或资料库信息。
+应用声明 `INTERNET` 权限，为后续接入的网易云搜索、元数据、歌词和播放地址能力提供基础。当前版本不会在启动时创建 API 客户端或主动发起网络请求，现有界面与播放服务仍保持纯本地行为。登录 Cookie 仅在用户以后明确导入时使用 Android Keystore 加密保存在设备上，并且只会发送到允许的网易云域名；本地歌曲、封面、歌词和资料库信息不会上传。
 
 - Android 13 及以上使用 `READ_MEDIA_AUDIO` 读取设备音频；Android 8.1 至 Android 12 使用受版本限制的 `READ_EXTERNAL_STORAGE`。
 - `FOREGROUND_SERVICE_MEDIA_PLAYBACK` 仅用于用户播放音乐时维持后台播放和媒体通知。
@@ -82,6 +82,7 @@ Smartisan OS 已经退出历史舞台，本项目因此以锤子音乐 8.1.0 为
 | 播放 | Media3 `1.10.1`、ExoPlayer、MediaLibraryService、MediaSession |
 | 状态 | Lifecycle、StateFlow、Coroutines |
 | 存储 | Room `2.8.4`、DataStore `1.2.1`、MediaStore |
+| 网络基础 | 独立 `:netease-api` 模块、OkHttp、Gson、网易云 EAPI |
 | SDK | `minSdk 27` / `targetSdk 36` / `compileSdk 37` |
 
 ## 构建
@@ -107,6 +108,8 @@ Release APK 位于 `app/build/outputs/apk/release/SmartisanMusic-Revived-0.2.0.a
 感谢 [People-11](https://github.com/People-11/) 的 [SmartisanOS_APP_Port](https://github.com/People-11/SmartisanOS_APP_Port/) 移植工作。本项目使用该项目提供的 `Music_8.1.0.apk` 进行逆向分析，用于确认原版资源、页面层级、视觉细节、动画时序与交互行为。
 
 People-11 的工作让原版应用能够在非 Smartisan 设备上继续运行；本项目则重新实现媒体扫描、播放服务、资料库、队列和数据存储，在保留原版设计语言的同时使用现代公开 Android API 承担系统能力。
+
+网易云 API 基础模块参考并改写自 [GuitaristRin/Ncrust](https://github.com/GuitaristRin/Ncrust)，其 EAPI 实现依据 MIT License 使用；完整声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ## 免责声明
 
