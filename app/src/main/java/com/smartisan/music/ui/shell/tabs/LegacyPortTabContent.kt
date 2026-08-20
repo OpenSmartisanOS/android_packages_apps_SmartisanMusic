@@ -160,6 +160,7 @@ internal fun LegacyPortTabContent(
         if (artistPageMounted || artistActive) {
             LegacyPortArtistPage(
                 mediaItems = mediaItems,
+                libraryLoaded = libraryLoaded,
                 active = artistActive,
                 selectedTarget = selectedArtistTarget,
                 albumViewMode = artistAlbumViewMode,
@@ -187,6 +188,7 @@ internal fun LegacyPortTabContent(
         if (albumPageMounted || albumActive) {
             LegacyPortAlbumPage(
                 mediaItems = mediaItems,
+                libraryLoaded = libraryLoaded,
                 active = albumActive,
                 viewMode = albumViewMode,
                 editMode = albumEditMode,

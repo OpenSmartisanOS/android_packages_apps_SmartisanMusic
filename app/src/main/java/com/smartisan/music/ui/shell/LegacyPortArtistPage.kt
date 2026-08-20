@@ -107,6 +107,7 @@ internal val LegacyArtistTarget.showsAlbumSwitch: Boolean
 @Composable
 internal fun LegacyPortArtistPage(
     mediaItems: List<MediaItem>,
+    libraryLoaded: Boolean,
     active: Boolean,
     selectedTarget: LegacyArtistTarget?,
     albumViewMode: AlbumViewMode,
@@ -177,6 +178,7 @@ internal fun LegacyPortArtistPage(
         primaryContent = {
             LegacyPortArtistOverviewPage(
                 active = active,
+                libraryLoaded = libraryLoaded,
                 artists = artists,
                 onArtistSelected = { artist ->
                     val albums = artist.albumSummaries(

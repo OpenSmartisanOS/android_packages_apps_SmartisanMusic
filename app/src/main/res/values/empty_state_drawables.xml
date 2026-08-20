@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="blank_artist_empty_state" type="drawable">@drawable/blank_artist</item>
+    <item name="blank_album_empty_state" type="drawable">@drawable/blank_album</item>
+</resources>

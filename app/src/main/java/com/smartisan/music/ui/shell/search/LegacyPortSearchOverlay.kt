@@ -282,6 +282,7 @@ private fun LegacyPortSearchDrilldownPage(
                 }
                 LegacyPortArtistPage(
                     mediaItems = visibleSongs,
+                    libraryLoaded = true,
                     active = true,
                     selectedTarget = target.target,
                     albumViewMode = artistAlbumViewMode,

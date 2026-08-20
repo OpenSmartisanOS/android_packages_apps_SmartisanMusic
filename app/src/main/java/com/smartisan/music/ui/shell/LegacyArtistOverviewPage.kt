@@ -20,6 +20,7 @@ import com.smartisan.music.ui.artist.ArtistSummary
 @Composable
 internal fun LegacyPortArtistOverviewPage(
     active: Boolean,
+    libraryLoaded: Boolean,
     artists: List<ArtistSummary>,
     onArtistSelected: (ArtistSummary) -> Unit,
     modifier: Modifier = Modifier,
@@ -38,6 +39,7 @@ internal fun LegacyPortArtistOverviewPage(
             if (adapter.updateItems(artists)) {
                 root.listView.scheduleLayoutAnimation()
             }
+            root.bindEmptyState(libraryLoaded && artists.isEmpty())
             root.bindFooter(artists.size)
             root.listView.setOnItemClickListener { _, _, position, _ ->
                 adapter.itemAt(position)?.let(onArtistSelected)
@@ -48,16 +50,26 @@ internal fun LegacyPortArtistOverviewPage(
 
 private class LegacyArtistOverviewRoot(context: Context) : FrameLayout(context) {
     val listView: ListView
+    private val emptyView: View
 
     init {
         setBackgroundResource(R.drawable.account_background)
+        emptyView = LayoutInflater.from(context)
+            .inflate(R.layout.layout_blank_artistslist, this, false)
+        addView(
+            emptyView,
+            LayoutParams(
+                LayoutParams.MATCH_PARENT,
+                LayoutParams.MATCH_PARENT,
+            ),
+        )
         listView = ListView(context).apply {
             id = R.id.list
             divider = ColorDrawable(context.getColor(R.color.listview_divider_color))
             dividerHeight = resources.getDimensionPixelSize(R.dimen.listview_dividerHeight)
             selector = context.getDrawable(R.drawable.listview_selector)
             cacheColorHint = Color.TRANSPARENT
-            setBackgroundResource(R.drawable.account_background)
+            setBackgroundColor(Color.TRANSPARENT)
             layoutAnimation = AnimationUtils.loadLayoutAnimation(context, R.anim.list_anim_layout)
             addLegacyPortListFooter()
         }
@@ -68,6 +80,10 @@ private class LegacyArtistOverviewRoot(context: Context) : FrameLayout(context) 
                 LayoutParams.MATCH_PARENT,
             ),
         )
+    }
+
+    fun bindEmptyState(empty: Boolean) {
+        emptyView.visibility = if (empty) View.VISIBLE else View.GONE
     }
 
     fun bindFooter(artistCount: Int) {

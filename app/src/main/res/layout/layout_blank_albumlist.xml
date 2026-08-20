@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.smartisan.music.ui.widgets.legacy.SmartisanBlankView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:smartisanos="http://schemas.android.com/apk/res-auto"
+    android:id="@id/fl_null_artist"
+    style="@style/SmartisanBlankViewStyle"
+    android:background="@drawable/account_background"
+    smartisanos:emptyDrawable="@drawable/blank_album_empty_state"
+    smartisanos:primaryHint="@string/no_album"
+    smartisanos:secondaryHint="@string/show_album" />

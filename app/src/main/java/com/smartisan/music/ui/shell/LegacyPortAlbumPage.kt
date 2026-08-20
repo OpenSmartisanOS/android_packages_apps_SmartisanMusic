@@ -65,6 +65,7 @@ private fun android.content.res.Resources.getDimensionPixelSizeCompatFooterPaddi
 @Composable
 internal fun LegacyPortAlbumPage(
     mediaItems: List<MediaItem>,
+    libraryLoaded: Boolean,
     active: Boolean,
     viewMode: AlbumViewMode,
     editMode: Boolean,
@@ -128,6 +129,7 @@ internal fun LegacyPortAlbumPage(
         primaryContent = {
             LegacyPortAlbumOverviewPage(
                 active = active,
+                libraryLoaded = libraryLoaded,
                 albums = albums,
                 currentMediaId = currentMediaId,
                 browser = browser,
@@ -156,6 +158,7 @@ internal fun LegacyPortAlbumPage(
 @Composable
 private fun LegacyPortAlbumOverviewPage(
     active: Boolean,
+    libraryLoaded: Boolean,
     albums: List<AlbumSummary>,
     currentMediaId: String?,
     browser: Player?,
@@ -190,6 +193,7 @@ private fun LegacyPortAlbumOverviewPage(
                     }
                 },
             )
+            root.bindEmptyState(libraryLoaded && albums.isEmpty())
 
             val listAdapter = root.listView.legacyAlbumListAdapter()
                 ?: LegacyAlbumListAdapter(root.artworkLoader).also { adapter ->
@@ -293,6 +297,8 @@ private class LegacyAlbumRoot(context: Context) : LinearLayout(context) {
     val listHost: FrameLayout
     val listView: ListView
     val gridView: GridView
+    private val emptyView: View
+    private val content: FrameLayout
     val artworkLoader = LegacyAlbumArtworkLoader(context)
     private val listFooterView = LegacyAlbumFooterView(context)
     var viewMode: AlbumViewMode? = null
@@ -301,6 +307,16 @@ private class LegacyAlbumRoot(context: Context) : LinearLayout(context) {
     init {
         orientation = VERTICAL
         setBackgroundColor(context.getColor(R.color.page_background))
+
+        emptyView = LayoutInflater.from(context)
+            .inflate(R.layout.layout_blank_albumlist, this, false)
+        addView(
+            emptyView,
+            LayoutParams(
+                LayoutParams.MATCH_PARENT,
+                LayoutParams.MATCH_PARENT,
+            ),
+        )
 
         val playContainer = LayoutInflater.from(context)
             .inflate(R.layout.layout_play_container, this, false)
@@ -324,7 +340,7 @@ private class LegacyAlbumRoot(context: Context) : LinearLayout(context) {
             ),
         )
 
-        val content = FrameLayout(context).apply {
+        content = FrameLayout(context).apply {
             id = R.id.fl_list_tile
             setBackgroundColor(context.getColor(R.color.page_background))
         }
@@ -396,6 +412,11 @@ private class LegacyAlbumRoot(context: Context) : LinearLayout(context) {
                 FrameLayout.LayoutParams.MATCH_PARENT,
             ),
         )
+    }
+
+    fun bindEmptyState(empty: Boolean) {
+        emptyView.visibility = if (empty) View.VISIBLE else View.GONE
+        content.visibility = if (empty) View.GONE else View.VISIBLE
     }
 
     fun bindPlayActions(
