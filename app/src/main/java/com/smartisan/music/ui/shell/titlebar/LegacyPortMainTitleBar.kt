@@ -2,12 +2,20 @@ package com.smartisan.music.ui.shell.titlebar
 
 import android.view.View
 import android.widget.CheckBox
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.zIndex
 import com.smartisan.music.R
 import com.smartisan.music.ui.album.AlbumViewMode
 import com.smartisan.music.ui.navigation.MusicDestination
 import com.smartisan.music.ui.shell.LegacyArtistTarget
+import com.smartisan.music.ui.shell.setupLegacyPlaylistTitleBar
 import com.smartisan.music.ui.shell.showsAlbumSwitch
 import com.smartisan.music.ui.widgets.legacy.TitleBar
 
@@ -33,9 +41,19 @@ internal fun LegacyPortTitleBar(
     onToggleArtistAlbumViewMode: () -> Unit,
     onRootBack: (() -> Unit)?,
     onSearchClick: () -> Unit,
+    onOpenMoreSettings: () -> Unit = {},
+    playlistEditMode: Boolean = false,
+    playlistSelectedCount: Int = 0,
+    onEnterPlaylistEditMode: () -> Unit = {},
+    onExitPlaylistEditMode: () -> Unit = {},
+    onDeleteSelectedPlaylists: () -> Unit = {},
+    rootTitleBar: LegacyPortRootTitleBar? = null,
     modifier: Modifier = Modifier,
 ) {
-    LegacyPortSmartisanTitleBar(modifier = modifier) { titleBar ->
+    LegacyPortRootTitleBar(
+        rootTitleBar = rootTitleBar,
+        modifier = modifier,
+    ) { titleBar ->
         titleBar.setupLegacyMainTitleBar(
             destination = destination,
             songsEditMode = songsEditMode,
@@ -57,9 +75,153 @@ internal fun LegacyPortTitleBar(
             onToggleArtistAlbumViewMode = onToggleArtistAlbumViewMode,
             onRootBack = onRootBack,
             onSearchClick = onSearchClick,
+            onOpenMoreSettings = onOpenMoreSettings,
+            playlistEditMode = playlistEditMode,
+            playlistSelectedCount = playlistSelectedCount,
+            onEnterPlaylistEditMode = onEnterPlaylistEditMode,
+            onExitPlaylistEditMode = onExitPlaylistEditMode,
+            onDeleteSelectedPlaylists = onDeleteSelectedPlaylists,
         )
     }
 }
+
+@Composable
+internal fun LegacyPortStableRootTitleBarHost(
+    destination: MusicDestination,
+    visible: Boolean,
+    songsEditMode: Boolean,
+    selectedSongCount: Int,
+    albumEditMode: Boolean,
+    selectedAlbumCount: Int,
+    albumViewMode: AlbumViewMode,
+    artistAlbumViewMode: AlbumViewMode,
+    playlistEditMode: Boolean,
+    playlistSelectedCount: Int,
+    onEnterSongsEditMode: () -> Unit,
+    onExitSongsEditMode: () -> Unit,
+    onRequestDeleteSelected: () -> Unit,
+    onEnterAlbumEditMode: () -> Unit,
+    onExitAlbumEditMode: () -> Unit,
+    onToggleAlbumViewMode: () -> Unit,
+    onRootBack: (() -> Unit)?,
+    onSearchClick: () -> Unit,
+    onOpenMoreSettings: () -> Unit,
+    onEnterPlaylistEditMode: () -> Unit,
+    onExitPlaylistEditMode: () -> Unit,
+    onDeleteSelectedPlaylists: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val latestOnEnterSongsEditMode by rememberUpdatedState(onEnterSongsEditMode)
+    val latestOnExitSongsEditMode by rememberUpdatedState(onExitSongsEditMode)
+    val latestOnRequestDeleteSelected by rememberUpdatedState(onRequestDeleteSelected)
+    val latestOnEnterAlbumEditMode by rememberUpdatedState(onEnterAlbumEditMode)
+    val latestOnExitAlbumEditMode by rememberUpdatedState(onExitAlbumEditMode)
+    val latestOnToggleAlbumViewMode by rememberUpdatedState(onToggleAlbumViewMode)
+    val latestOnRootBack by rememberUpdatedState(onRootBack)
+    val latestOnSearchClick by rememberUpdatedState(onSearchClick)
+    val latestOnOpenMoreSettings by rememberUpdatedState(onOpenMoreSettings)
+    val latestOnEnterPlaylistEditMode by rememberUpdatedState(onEnterPlaylistEditMode)
+    val latestOnExitPlaylistEditMode by rememberUpdatedState(onExitPlaylistEditMode)
+    val latestOnDeleteSelectedPlaylists by rememberUpdatedState(onDeleteSelectedPlaylists)
+    val stableOnEnterSongsEditMode = remember { { latestOnEnterSongsEditMode() } }
+    val stableOnExitSongsEditMode = remember { { latestOnExitSongsEditMode() } }
+    val stableOnRequestDeleteSelected = remember { { latestOnRequestDeleteSelected() } }
+    val stableOnEnterAlbumEditMode = remember { { latestOnEnterAlbumEditMode() } }
+    val stableOnExitAlbumEditMode = remember { { latestOnExitAlbumEditMode() } }
+    val stableOnToggleAlbumViewMode = remember { { latestOnToggleAlbumViewMode() } }
+    val stableOnRootBack = remember {
+        {
+            latestOnRootBack?.invoke()
+            Unit
+        }
+    }
+    val stableOnSearchClick = remember { { latestOnSearchClick() } }
+    val stableOnOpenMoreSettings = remember { { latestOnOpenMoreSettings() } }
+    val stableOnEnterPlaylistEditMode = remember { { latestOnEnterPlaylistEditMode() } }
+    val stableOnExitPlaylistEditMode = remember { { latestOnExitPlaylistEditMode() } }
+    val stableOnDeleteSelectedPlaylists = remember { { latestOnDeleteSelectedPlaylists() } }
+    val hasRootBack = onRootBack != null
+
+    Box(modifier = modifier) {
+        StableRootTitleBarDestinations.forEach { layerDestination ->
+            val layerEditMode = when (layerDestination) {
+                MusicDestination.Playlist -> playlistEditMode
+                MusicDestination.Songs -> songsEditMode
+                MusicDestination.Album -> albumEditMode
+                else -> false
+            }
+            val layerSelectionEnabled = when (layerDestination) {
+                MusicDestination.Playlist -> playlistSelectedCount > 0
+                MusicDestination.Songs -> selectedSongCount > 0
+                MusicDestination.Album -> selectedAlbumCount > 0
+                else -> false
+            }
+            val updateKey = LegacyPortStableRootTitleBarKey(
+                destination = layerDestination,
+                editMode = layerEditMode,
+                selectionEnabled = layerSelectionEnabled,
+                albumViewMode = albumViewMode.takeIf {
+                    layerDestination == MusicDestination.Album
+                },
+                hasRootBack = hasRootBack,
+            )
+            val active = visible && destination == layerDestination
+            LegacyPortSmartisanTitleBar(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .alpha(if (active) 1f else 0f)
+                    .zIndex(if (active) 1f else 0f),
+                viewVisible = active,
+                updateKey = updateKey,
+            ) { titleBar ->
+                titleBar.setupLegacyMainTitleBar(
+                    destination = layerDestination,
+                    songsEditMode = layerDestination == MusicDestination.Songs && songsEditMode,
+                    selectedSongCount = selectedSongCount,
+                    albumEditMode = layerDestination == MusicDestination.Album && albumEditMode,
+                    selectedAlbumCount = selectedAlbumCount,
+                    albumDetailTitle = null,
+                    albumViewMode = albumViewMode,
+                    artistTarget = null,
+                    artistAlbumViewMode = artistAlbumViewMode,
+                    onEnterSongsEditMode = stableOnEnterSongsEditMode,
+                    onExitSongsEditMode = stableOnExitSongsEditMode,
+                    onRequestDeleteSelected = stableOnRequestDeleteSelected,
+                    onEnterAlbumEditMode = stableOnEnterAlbumEditMode,
+                    onExitAlbumEditMode = stableOnExitAlbumEditMode,
+                    onToggleAlbumViewMode = stableOnToggleAlbumViewMode,
+                    onAlbumDetailBack = {},
+                    onArtistBack = {},
+                    onToggleArtistAlbumViewMode = {},
+                    onRootBack = stableOnRootBack.takeIf { hasRootBack },
+                    onSearchClick = stableOnSearchClick,
+                    onOpenMoreSettings = stableOnOpenMoreSettings,
+                    playlistEditMode = playlistEditMode,
+                    playlistSelectedCount = playlistSelectedCount,
+                    onEnterPlaylistEditMode = stableOnEnterPlaylistEditMode,
+                    onExitPlaylistEditMode = stableOnExitPlaylistEditMode,
+                    onDeleteSelectedPlaylists = stableOnDeleteSelectedPlaylists,
+                )
+            }
+        }
+    }
+}
+
+private data class LegacyPortStableRootTitleBarKey(
+    val destination: MusicDestination,
+    val editMode: Boolean,
+    val selectionEnabled: Boolean,
+    val albumViewMode: AlbumViewMode?,
+    val hasRootBack: Boolean,
+)
+
+private val StableRootTitleBarDestinations = listOf(
+    MusicDestination.Playlist,
+    MusicDestination.Artist,
+    MusicDestination.Album,
+    MusicDestination.Songs,
+    MusicDestination.More,
+)
 
 @Composable
 internal fun LegacyPortSearchDetailTitleBar(
@@ -117,7 +279,31 @@ private fun TitleBar.setupLegacyMainTitleBar(
     onToggleArtistAlbumViewMode: () -> Unit,
     onRootBack: (() -> Unit)?,
     onSearchClick: () -> Unit,
+    onOpenMoreSettings: () -> Unit,
+    playlistEditMode: Boolean,
+    playlistSelectedCount: Int,
+    onEnterPlaylistEditMode: () -> Unit,
+    onExitPlaylistEditMode: () -> Unit,
+    onDeleteSelectedPlaylists: () -> Unit,
 ) {
+    if (destination == MusicDestination.Playlist) {
+        setupLegacyPlaylistTitleBar(
+            target = null,
+            detailTitle = "",
+            rootEditMode = playlistEditMode,
+            rootSelectedCount = playlistSelectedCount,
+            detailEditMode = false,
+            onRootEnterEdit = onEnterPlaylistEditMode,
+            onRootExitEdit = onExitPlaylistEditMode,
+            onRootDeleteSelected = onDeleteSelectedPlaylists,
+            onRootBack = onRootBack,
+            onDetailBack = {},
+            onDetailEnterEdit = {},
+            onDetailExitEdit = {},
+            onSearchClick = onSearchClick,
+        )
+        return
+    }
     removeAllLeftViews()
     removeAllRightViews()
     setShadowVisible(false)
@@ -188,7 +374,11 @@ private fun TitleBar.setupLegacyMainTitleBar(
 
     when (destination) {
         MusicDestination.More -> {
-            addLeftImageView(R.drawable.standard_icon_settings_selector)
+            addLeftImageView(R.drawable.standard_icon_settings_selector).apply {
+                setOnClickListener {
+                    onOpenMoreSettings()
+                }
+            }
             addRightImageView(R.drawable.search_btn_selector).apply {
                 setOnClickListener {
                     onSearchClick()

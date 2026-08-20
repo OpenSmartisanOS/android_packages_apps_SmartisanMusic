@@ -46,12 +46,14 @@ import com.smartisan.music.playback.LocalPlaybackBrowser
 import com.smartisan.music.ui.genre.GenreSummary
 import com.smartisan.music.ui.genre.buildGenreSummaries
 import com.smartisan.music.ui.shell.titlebar.LegacyPortSmartisanTitleBar
+import com.smartisan.music.ui.shell.titlebar.LegacyPortRootTitleBar
 import com.smartisan.music.ui.shell.titlebar.LegacyPortTitleBarShadow
 import com.smartisan.music.ui.shell.titlebar.LegacyPortTitleBarTransition
 import com.smartisan.music.ui.widgets.legacy.TitleBar
 
 @Composable
 internal fun LegacyPortGenrePage(
+    rootTitleBar: LegacyPortRootTitleBar?,
     active: Boolean,
     mediaItems: List<MediaItem>,
     hiddenMediaIds: Set<String>,
@@ -153,7 +155,10 @@ internal fun LegacyPortGenrePage(
                 predictiveBackExitConsumed = detailPredictiveBackState.exitConsumed,
                 onPredictiveBackExitConsumedReset = detailPredictiveBackState::reset,
                 primaryContent = {
-                    LegacyPortSmartisanTitleBar(modifier = Modifier.fillMaxSize()) { titleBar ->
+                    LegacyPortRootTitleBar(
+                        rootTitleBar = rootTitleBar,
+                        modifier = Modifier.fillMaxSize(),
+                    ) { titleBar ->
                         titleBar.setupLegacyGenreTitleBar(
                             title = genreTitle,
                             onBack = onClose,

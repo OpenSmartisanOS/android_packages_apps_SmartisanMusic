@@ -22,6 +22,7 @@ internal fun LegacyPortArtistTitleStack(
     nestedPredictiveBackProgress: Float? = null,
     nestedPredictiveBackExitConsumed: Boolean = false,
     onNestedPredictiveBackExitConsumedReset: (() -> Unit)? = null,
+    rootContentVisibleWhenIdle: Boolean = true,
     modifier: Modifier = Modifier,
     content: @Composable (LegacyArtistTarget?, Modifier) -> Unit,
 ) {
@@ -33,6 +34,7 @@ internal fun LegacyPortArtistTitleStack(
         predictiveBackProgress = rootPredictiveBackProgress,
         predictiveBackExitConsumed = rootPredictiveBackExitConsumed,
         onPredictiveBackExitConsumedReset = onRootPredictiveBackExitConsumedReset,
+        primaryVisibleWhenIdle = rootContentVisibleWhenIdle,
         primaryContent = {
             content(null, Modifier.fillMaxSize())
         },

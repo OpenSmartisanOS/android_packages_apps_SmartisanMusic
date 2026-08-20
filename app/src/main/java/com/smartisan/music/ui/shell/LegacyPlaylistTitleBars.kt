@@ -20,8 +20,8 @@ import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.viewinterop.AndroidView
 import com.smartisan.music.R
-import com.smartisan.music.ui.shell.titlebar.LegacyPortSmartisanTitleBar
 import com.smartisan.music.ui.shell.titlebar.LegacyPortTitleBarTransition
+import com.smartisan.music.ui.shell.titlebar.LegacyPortSmartisanTitleBar
 import com.smartisan.music.ui.widgets.legacy.TitleBar
 
 @Composable
@@ -34,6 +34,7 @@ internal fun LegacyPlaylistTitleArea(
     predictiveBackProgress: Float? = null,
     predictiveBackExitConsumed: Boolean = false,
     onPredictiveBackExitConsumedReset: (() -> Unit)? = null,
+    onDetailExitComplete: (() -> Unit)? = null,
     onRootEnterEdit: () -> Unit,
     onRootExitEdit: () -> Unit,
     onRootDeleteSelected: () -> Unit,
@@ -83,6 +84,8 @@ internal fun LegacyPlaylistTitleArea(
         predictiveBackProgress = predictiveBackProgress,
         predictiveBackExitConsumed = predictiveBackExitConsumed,
         onPredictiveBackExitConsumedReset = onPredictiveBackExitConsumedReset,
+        onSecondaryExitComplete = onDetailExitComplete,
+        primaryVisibleWhenIdle = false,
         primaryContent = {
             titleBarContent(null, "", rootEditMode, rootSelectedCount, false)
         },
@@ -135,7 +138,7 @@ internal fun LegacyPlaylistAddModeTitleArea(
     }
 }
 
-private fun TitleBar.setupLegacyPlaylistTitleBar(
+internal fun TitleBar.setupLegacyPlaylistTitleBar(
     target: LegacyPlaylistTarget?,
     detailTitle: String,
     rootEditMode: Boolean,

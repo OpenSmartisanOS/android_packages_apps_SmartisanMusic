@@ -85,8 +85,11 @@ import com.smartisan.music.ui.shell.tabs.LegacyPortBottomBar
 import com.smartisan.music.ui.shell.tabs.LegacyNavigationEditorOverlay
 import com.smartisan.music.ui.shell.tabs.LegacyPortTabContent
 import com.smartisan.music.ui.shell.titlebar.LegacyPortTitleBarShadow
+import com.smartisan.music.ui.shell.titlebar.LegacyPortRootTitleBar
+import com.smartisan.music.ui.shell.titlebar.LegacyPortStableRootTitleBarHost
 import com.smartisan.music.ui.shell.titlebar.LegacyPortTitleBar
 import com.smartisan.music.ui.shell.titlebar.LegacyPortTitleBarTransition
+import com.smartisan.music.ui.shell.titlebar.rememberLegacyPortRootTitleBar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -166,9 +169,12 @@ private fun LegacyPortMainShellContent(
     var currentDestination by remember { mutableStateOf(MusicDestination.Playlist) }
     var presentedFromMore by remember { mutableStateOf(false) }
     var playlistAddModeActive by remember { mutableStateOf(false) }
+    var playlistRootPageActive by remember { mutableStateOf(true) }
+    var moreSettingsVisible by remember { mutableStateOf(false) }
     var moreSettingsPageActive by remember { mutableStateOf(false) }
     var navigationEditorVisible by remember { mutableStateOf(false) }
     var navigationLayoutInitialized by remember { mutableStateOf(false) }
+    val persistentRootTitleBar = rememberLegacyPortRootTitleBar()
 
     val navigationLayout = navigationSettings.layout
     // 加歌模式只临时替换底栏末位，不污染用户保存的导航布局。
@@ -195,6 +201,9 @@ private fun LegacyPortMainShellContent(
     }
     var songsEditMode by remember { mutableStateOf(false) }
     var selectedSongIds by remember { mutableStateOf(emptySet<String>()) }
+    var playlistEditMode by remember { mutableStateOf(false) }
+    var selectedPlaylistIds by remember { mutableStateOf(emptySet<String>()) }
+    var playlistDeleteRequested by remember { mutableStateOf(false) }
     var albumEditMode by remember { mutableStateOf(false) }
     var selectedAlbumIds by remember { mutableStateOf(emptySet<String>()) }
     var selectedAlbumId by remember { mutableStateOf<String?>(null) }
@@ -498,6 +507,10 @@ private fun LegacyPortMainShellContent(
         }
         if (currentDestination != MusicDestination.Playlist) {
             playlistAddModeActive = false
+            playlistRootPageActive = true
+            playlistEditMode = false
+            selectedPlaylistIds = emptySet()
+            playlistDeleteRequested = false
         }
         dismissTrackActions()
     }
@@ -571,6 +584,7 @@ private fun LegacyPortMainShellContent(
 
     LaunchedEffect(currentDestination) {
         if (currentDestination != MusicDestination.More) {
+            moreSettingsVisible = false
             moreSettingsPageActive = false
         }
     }
@@ -588,13 +602,23 @@ private fun LegacyPortMainShellContent(
         val titleShadowHeight = dimensionResource(R.dimen.title_bar_shadow_height)
         val titleAreaHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + titleContentHeight
         val destinationSurface: @Composable (MusicDestination, Boolean) -> Unit = { destination, fromMore ->
+            val usesStableRootTitleBar = destination.usesLegacyPortStableRootTitleBar()
+            val destinationRootTitleBar = legacyPortRootTitleBarForDestination(
+                rootTitleBar = persistentRootTitleBar,
+                destination = destination,
+            )
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(bottom = if (hideBottomChrome) 0.dp else realTabContentBottomMargin),
             ) {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    val titleBarContent: @Composable (String?, LegacyArtistTarget?, Modifier) -> Unit = { albumDetailTitle, artistTarget, titleModifier ->
+                Box(modifier = Modifier.fillMaxSize()) {
+                    val titleBarContent: @Composable (
+                        String?,
+                        LegacyArtistTarget?,
+                        Modifier,
+                        LegacyPortRootTitleBar?,
+                    ) -> Unit = { albumDetailTitle, artistTarget, titleModifier, titleRootTitleBar ->
                         LegacyPortTitleBar(
                             destination = destination,
                             songsEditMode = destination == MusicDestination.Songs && songsEditMode,
@@ -655,7 +679,108 @@ private fun LegacyPortMainShellContent(
                             },
                             onRootBack = ::returnToMore.takeIf { fromMore },
                             onSearchClick = ::openCurrentSearch,
+                            onOpenMoreSettings = {
+                                moreSettingsVisible = true
+                            },
+                            playlistEditMode = playlistEditMode,
+                            playlistSelectedCount = selectedPlaylistIds.size,
+                            onEnterPlaylistEditMode = {
+                                playlistEditMode = true
+                                selectedPlaylistIds = emptySet()
+                            },
+                            onExitPlaylistEditMode = {
+                                playlistEditMode = false
+                                selectedPlaylistIds = emptySet()
+                            },
+                            onDeleteSelectedPlaylists = {
+                                if (selectedPlaylistIds.isNotEmpty()) {
+                                    playlistDeleteRequested = true
+                                }
+                            },
+                            rootTitleBar = titleRootTitleBar.takeIf {
+                                albumDetailTitle == null && artistTarget == null
+                            },
                             modifier = titleModifier,
+                        )
+                    }
+                    val stableRootVisible = usesStableRootTitleBar &&
+                        when (destination) {
+                            MusicDestination.Playlist -> playlistRootPageActive
+                            MusicDestination.Artist -> selectedArtistTarget == null
+                            MusicDestination.Album -> selectedAlbumId == null
+                            else -> true
+                        }
+                    if (shouldKeepLegacyPortStableRootTitleBarHost(destination, fromMore)) {
+                        LegacyPortStableRootTitleBarHost(
+                            destination = destination,
+                            visible = stableRootVisible,
+                            songsEditMode = songsEditMode,
+                            selectedSongCount = selectedSongIds.size,
+                            albumEditMode = albumEditMode,
+                            selectedAlbumCount = selectedAlbumIds.size,
+                            albumViewMode = albumViewMode,
+                            artistAlbumViewMode = artistAlbumViewMode,
+                            playlistEditMode = playlistEditMode,
+                            playlistSelectedCount = selectedPlaylistIds.size,
+                            onEnterSongsEditMode = {
+                                songsEditMode = true
+                                selectedSongIds = emptySet()
+                            },
+                            onExitSongsEditMode = {
+                                songsEditMode = false
+                                selectedSongIds = emptySet()
+                                showSongDeleteConfirm = false
+                            },
+                            onRequestDeleteSelected = {
+                                if (selectedSongIds.isNotEmpty()) {
+                                    requestSongDeleteConfirmation(selectedSongIds)
+                                }
+                            },
+                            onEnterAlbumEditMode = {
+                                albumEditMode = true
+                                selectedAlbumIds = emptySet()
+                            },
+                            onExitAlbumEditMode = {
+                                albumEditMode = false
+                                selectedAlbumIds = emptySet()
+                            },
+                            onToggleAlbumViewMode = {
+                                val nextMode = if (albumViewMode == AlbumViewMode.List) {
+                                    AlbumViewMode.Tile
+                                } else {
+                                    AlbumViewMode.List
+                                }
+                                scope.launch {
+                                    libraryDisplaySettingsStore.setAlbumViewMode(nextMode)
+                                }
+                            },
+                            onRootBack = ::returnToMore.takeIf { fromMore },
+                            onSearchClick = ::openCurrentSearch,
+                            onOpenMoreSettings = {
+                                moreSettingsVisible = true
+                            },
+                            onEnterPlaylistEditMode = {
+                                playlistEditMode = true
+                                selectedPlaylistIds = emptySet()
+                            },
+                            onExitPlaylistEditMode = {
+                                playlistEditMode = false
+                                selectedPlaylistIds = emptySet()
+                            },
+                            onDeleteSelectedPlaylists = {
+                                if (selectedPlaylistIds.isNotEmpty()) {
+                                    playlistDeleteRequested = true
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .zIndex(
+                                    when {
+                                        !stableRootVisible -> -1f
+                                        destination == MusicDestination.More -> 0f
+                                        else -> 1f
+                                    },
+                                ),
                         )
                     }
                     if (destination !in DestinationsWithOwnedTitleBar) {
@@ -664,16 +789,28 @@ private fun LegacyPortMainShellContent(
                                 secondaryKey = selectedAlbumTitle,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(titleAreaHeight),
+                                    .height(titleAreaHeight)
+                                    .zIndex(2f),
                                 label = "legacy album title transition",
                                 predictiveBackProgress = albumPredictiveBackState.progress,
                                 predictiveBackExitConsumed = albumPredictiveBackState.exitConsumed,
                                 onPredictiveBackExitConsumedReset = albumPredictiveBackState::reset,
+                                primaryVisibleWhenIdle = false,
                                 primaryContent = {
-                                    titleBarContent(null, null, Modifier.fillMaxSize())
+                                    titleBarContent(
+                                        null,
+                                        null,
+                                        Modifier.fillMaxSize(),
+                                        null,
+                                    )
                                 },
                                 secondaryContent = { detailTitle ->
-                                    titleBarContent(detailTitle, null, Modifier.fillMaxSize())
+                                    titleBarContent(
+                                        detailTitle,
+                                        null,
+                                        Modifier.fillMaxSize(),
+                                        null,
+                                    )
                                 },
                             )
                             MusicDestination.Artist -> LegacyPortArtistTitleStack(
@@ -684,22 +821,28 @@ private fun LegacyPortMainShellContent(
                                 nestedPredictiveBackProgress = artistNestedPredictiveBackState.progress,
                                 nestedPredictiveBackExitConsumed = artistNestedPredictiveBackState.exitConsumed,
                                 onNestedPredictiveBackExitConsumedReset = artistNestedPredictiveBackState::reset,
+                                rootContentVisibleWhenIdle = false,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(titleAreaHeight),
+                                    .height(titleAreaHeight)
+                                    .zIndex(2f),
                             ) { artistTarget, titleModifier ->
-                                titleBarContent(null, artistTarget, titleModifier)
+                                titleBarContent(null, artistTarget, titleModifier, null)
                             }
-                            else -> titleBarContent(null, null, Modifier.fillMaxWidth())
+                            else -> Unit
                         }
                     }
                     LegacyPortTabContent(
                         destination = destination,
+                        rootTitleBar = destinationRootTitleBar,
                         presentedFromMore = fromMore,
                         overflowDestinations = overflowDestinations,
                         mediaItems = legacyLibraryItems,
                         favoriteRecords = favoriteRecords,
                         libraryLoaded = legacyLibrary.loaded,
+                        playlistEditMode = playlistEditMode,
+                        selectedPlaylistIds = selectedPlaylistIds,
+                        playlistDeleteRequested = playlistDeleteRequested,
                         songsEditMode = destination == MusicDestination.Songs && songsEditMode,
                         selectedSongIds = selectedSongIds,
                         albumViewMode = albumViewMode,
@@ -718,6 +861,8 @@ private fun LegacyPortMainShellContent(
                         artistNestedPredictiveBackExitConsumed = artistNestedPredictiveBackState.exitConsumed,
                         onArtistNestedPredictiveBackExitConsumedReset = artistNestedPredictiveBackState::reset,
                         moreDestinationPredictiveBackState = moreDestinationPredictiveBackState,
+                        moreSettingsVisible = moreSettingsVisible,
+                        externalTitleAreaHeight = titleAreaHeight,
                         playbackBarOverlayHeight = if (hideBottomChrome) 0.dp else playbackBarOverlayHeight,
                         hiddenMediaIds = libraryExclusions.hiddenMediaIds,
                         libraryRefreshVersion = libraryRefreshVersion,
@@ -789,7 +934,24 @@ private fun LegacyPortMainShellContent(
                         onPlaylistTrackMoreClick = { item ->
                             showTrackActions(item, LegacyTrackActionSource.Playlist)
                         },
+                        onPlaylistEditModeChange = { enabled ->
+                            playlistEditMode = enabled
+                        },
+                        onSelectedPlaylistIdsChange = { playlistIds ->
+                            selectedPlaylistIds = playlistIds
+                        },
+                        onPlaylistDeleteRequestConsumed = {
+                            playlistDeleteRequested = false
+                        },
+                        onPlaylistRootPageActiveChanged = { active ->
+                            if (currentDestination == MusicDestination.Playlist) {
+                                playlistRootPageActive = active
+                            }
+                        },
                         onRemoveFavoriteMediaIds = ::removeFavoriteMediaIds,
+                        onMoreSettingsVisibleChange = { visible ->
+                            moreSettingsVisible = visible
+                        },
                         onMoreSettingsPageActiveChanged = { active ->
                             moreSettingsPageActive = active
                         },
@@ -815,9 +977,7 @@ private fun LegacyPortMainShellContent(
                             libraryLoadRequested = true
                         },
                         onSearchClick = ::openCurrentSearch,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
                 if (destination == MusicDestination.Artist || destination == MusicDestination.Album) {
@@ -1170,11 +1330,36 @@ private fun MusicDestination.requiresFullLibraryItems(): Boolean {
 
 private val DestinationsWithOwnedTitleBar = setOf(
     MusicDestination.Playlist,
-    MusicDestination.More,
     MusicDestination.Genre,
     MusicDestination.LovedSongs,
     MusicDestination.Folder,
 )
+
+private val StableRootTitleBarDestinations = setOf(
+    MusicDestination.Playlist,
+    MusicDestination.Artist,
+    MusicDestination.Album,
+    MusicDestination.Songs,
+    MusicDestination.More,
+)
+
+internal fun MusicDestination.usesLegacyPortStableRootTitleBar(): Boolean {
+    return this in StableRootTitleBarDestinations
+}
+
+internal fun legacyPortRootTitleBarForDestination(
+    rootTitleBar: LegacyPortRootTitleBar,
+    destination: MusicDestination,
+): LegacyPortRootTitleBar? {
+    return rootTitleBar.takeUnless { destination.usesLegacyPortStableRootTitleBar() }
+}
+
+internal fun shouldKeepLegacyPortStableRootTitleBarHost(
+    destination: MusicDestination,
+    presentedFromMore: Boolean,
+): Boolean {
+    return !presentedFromMore || destination.usesLegacyPortStableRootTitleBar()
+}
 
 private fun List<MediaItem>.withRatingOverrides(ratingOverrides: Map<String, Int>): List<MediaItem> {
     if (isEmpty() || ratingOverrides.isEmpty()) {

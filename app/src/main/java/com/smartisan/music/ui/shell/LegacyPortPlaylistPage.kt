@@ -76,7 +76,6 @@ import com.smartisan.music.playback.LocalPlaybackBrowser
 import com.smartisan.music.playback.replaceQueueAndPlay
 import com.smartisan.music.playback.replaceQueueAndPlayShuffled
 import com.smartisan.music.ui.shell.songs.LegacyPortSongsPage
-import com.smartisan.music.ui.shell.titlebar.LegacyPortSmartisanTitleBar
 import com.smartisan.music.ui.shell.titlebar.LegacyPortTitleBarShadow
 import com.smartisan.music.ui.widgets.CustomCheckBox
 import com.smartisan.music.ui.widgets.EditableLayout
@@ -141,8 +140,15 @@ internal fun LegacyPortPlaylistPage(
     mediaItems: List<MediaItem>,
     libraryLoaded: Boolean,
     active: Boolean,
+    rootEditMode: Boolean,
+    selectedPlaylistIds: Set<String>,
+    rootDeleteRequested: Boolean,
     hiddenMediaIds: Set<String>,
     onTrackMoreClick: (MediaItem) -> Unit,
+    onRootEditModeChange: (Boolean) -> Unit,
+    onSelectedPlaylistIdsChange: (Set<String>) -> Unit,
+    onRootDeleteRequestConsumed: () -> Unit,
+    onRootPageActiveChanged: (Boolean) -> Unit,
     onAddModeActiveChanged: (Boolean) -> Unit,
     onLibraryNeeded: () -> Unit,
     onSearchClick: () -> Unit,
@@ -165,8 +171,6 @@ internal fun LegacyPortPlaylistPage(
     }
 
     var target by remember { mutableStateOf<LegacyPlaylistTarget?>(null) }
-    var rootEditMode by remember { mutableStateOf(false) }
-    var selectedPlaylistIds by remember { mutableStateOf(emptySet<String>()) }
     var detailEditMode by remember { mutableStateOf(false) }
     var selectedTrackIds by remember { mutableStateOf(emptySet<String>()) }
     var addMode by remember { mutableStateOf(false) }
@@ -175,6 +179,7 @@ internal fun LegacyPortPlaylistPage(
     var selectedAddSongIds by remember { mutableStateOf(emptySet<String>()) }
     var nameDialogRequest by remember { mutableStateOf<LegacyPlaylistNameDialogRequest?>(null) }
     var deleteRequest by remember { mutableStateOf<LegacyPlaylistDeleteRequest?>(null) }
+    var detailTitleTransitionActive by remember { mutableStateOf(target != null) }
     val detailPredictiveBackState = rememberLegacyPortPredictiveBackState()
 
     val activePlaylistId = target?.playlistId
@@ -237,6 +242,40 @@ internal fun LegacyPortPlaylistPage(
     LaunchedEffect(addModeVisible) {
         onAddModeActiveChanged(addModeVisible)
     }
+    LaunchedEffect(active, rootDeleteRequested) {
+        if (active && rootDeleteRequested) {
+            deleteRequest = LegacyPlaylistDeleteRequest.RootSelected
+            onRootDeleteRequestConsumed()
+        }
+    }
+    LaunchedEffect(target) {
+        if (target != null) {
+            detailTitleTransitionActive = true
+        }
+    }
+    LaunchedEffect(active, target, addModeVisible, detailTitleTransitionActive) {
+        onRootPageActiveChanged(
+            active && target == null && !addModeVisible && !detailTitleTransitionActive,
+        )
+    }
+    LaunchedEffect(active) {
+        if (!active) {
+            target = null
+            onRootEditModeChange(false)
+            onSelectedPlaylistIdsChange(emptySet())
+            detailEditMode = false
+            selectedTrackIds = emptySet()
+            addMode = false
+            addModeTarget = null
+            addModeReturnsToRoot = false
+            selectedAddSongIds = emptySet()
+            nameDialogRequest = null
+            deleteRequest = null
+            retainedDetailSnapshot = null
+            detailTitleTransitionActive = false
+            detailPredictiveBackState.reset()
+        }
+    }
     LaunchedEffect(active, target, addMode) {
         if (active && (target != null || addMode)) {
             onLibraryNeeded()
@@ -245,19 +284,20 @@ internal fun LegacyPortPlaylistPage(
     DisposableEffect(Unit) {
         onDispose {
             onAddModeActiveChanged(false)
+            onRootPageActiveChanged(false)
         }
     }
 
-    BackHandler(enabled = addModeVisible) {
+    BackHandler(enabled = active && addModeVisible) {
         closeAddMode()
     }
-    BackHandler(enabled = !addModeVisible && detailEditMode) {
+    BackHandler(enabled = active && !addModeVisible && detailEditMode) {
         detailEditMode = false
         selectedTrackIds = emptySet()
     }
-    BackHandler(enabled = target == null && rootEditMode) {
-        rootEditMode = false
-        selectedPlaylistIds = emptySet()
+    BackHandler(enabled = active && target == null && rootEditMode) {
+        onRootEditModeChange(false)
+        onSelectedPlaylistIdsChange(emptySet())
     }
     if (closePredictiveBackState != null && onClose != null) {
         LegacyPortPredictiveBackHandler(
@@ -271,7 +311,7 @@ internal fun LegacyPortPlaylistPage(
         }
     }
     LegacyPortPredictiveBackHandler(
-        enabled = !addModeVisible && !detailEditMode && target != null,
+        enabled = active && !addModeVisible && !detailEditMode && target != null,
         state = detailPredictiveBackState,
     ) {
         target = null
@@ -298,13 +338,16 @@ internal fun LegacyPortPlaylistPage(
                 predictiveBackProgress = detailPredictiveBackState.progress,
                 predictiveBackExitConsumed = detailPredictiveBackState.exitConsumed,
                 onPredictiveBackExitConsumedReset = detailPredictiveBackState::reset,
+                onDetailExitComplete = {
+                    detailTitleTransitionActive = false
+                },
                 onRootEnterEdit = {
-                    rootEditMode = true
-                    selectedPlaylistIds = emptySet()
+                    onRootEditModeChange(true)
+                    onSelectedPlaylistIdsChange(emptySet())
                 },
                 onRootExitEdit = {
-                    rootEditMode = false
-                    selectedPlaylistIds = emptySet()
+                    onRootEditModeChange(false)
+                    onSelectedPlaylistIdsChange(emptySet())
                 },
                 onRootDeleteSelected = {
                     if (selectedPlaylistIds.isNotEmpty()) {
@@ -365,7 +408,9 @@ internal fun LegacyPortPlaylistPage(
                             },
                             onPlaylistClick = { playlist ->
                                 if (rootEditMode) {
-                                    selectedPlaylistIds = selectedPlaylistIds.togglePlaylistSelection(playlist.id)
+                                    onSelectedPlaylistIdsChange(
+                                        selectedPlaylistIds.togglePlaylistSelection(playlist.id),
+                                    )
                                 } else {
                                     onLibraryNeeded()
                                     target = LegacyPlaylistTarget(
@@ -375,7 +420,9 @@ internal fun LegacyPortPlaylistPage(
                                 }
                             },
                             onPlaylistSelectionChange = { playlist, selected ->
-                                selectedPlaylistIds = selectedPlaylistIds.withSelection(playlist.id, selected)
+                                onSelectedPlaylistIdsChange(
+                                    selectedPlaylistIds.withSelection(playlist.id, selected),
+                                )
                             },
                             modifier = Modifier.fillMaxSize(),
                         )
@@ -538,7 +585,7 @@ internal fun LegacyPortPlaylistPage(
     }
 
     LegacyPlaylistNameDialogOverlay(
-        request = nameDialogRequest,
+        request = nameDialogRequest.takeIf { active },
         onDismiss = {
             nameDialogRequest = null
         },
@@ -593,7 +640,7 @@ internal fun LegacyPortPlaylistPage(
     )
 
     LegacyPlaylistDeleteDialog(
-        request = deleteRequest,
+        request = deleteRequest.takeIf { active },
         onDismiss = {
             deleteRequest = null
         },
@@ -602,8 +649,8 @@ internal fun LegacyPortPlaylistPage(
                 when (request) {
                     LegacyPlaylistDeleteRequest.RootSelected -> {
                         playlistRepository.deletePlaylists(selectedPlaylistIds)
-                        selectedPlaylistIds = emptySet()
-                        rootEditMode = false
+                        onSelectedPlaylistIdsChange(emptySet())
+                        onRootEditModeChange(false)
                     }
                     LegacyPlaylistDeleteRequest.DetailPlaylist -> {
                         val playlistId = target?.playlistId

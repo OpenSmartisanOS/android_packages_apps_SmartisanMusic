@@ -11,27 +11,29 @@ import android.widget.ListView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.colorResource
+import androidx.compose.ui.res.dimensionResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.zIndex
 import com.smartisan.music.R
 import com.smartisan.music.data.settings.ArtistSettings
 import com.smartisan.music.data.settings.AudioFxPreset
 import com.smartisan.music.data.settings.NavigationSettings
 import com.smartisan.music.data.settings.PlaybackSettings
 import com.smartisan.music.ui.navigation.MusicDestination
-import com.smartisan.music.ui.shell.titlebar.LegacyPortSmartisanTitleBar
+import com.smartisan.music.ui.shell.titlebar.LegacyPortTitleBarShadow
 import com.smartisan.music.ui.widgets.legacy.ListContentItemText
-import com.smartisan.music.ui.widgets.legacy.TitleBar
 import kotlinx.coroutines.delay
 
 /**
@@ -41,6 +43,8 @@ import kotlinx.coroutines.delay
 @Composable
 internal fun LegacyPortMorePage(
     active: Boolean,
+    settingsVisible: Boolean,
+    externalTitleAreaHeight: Dp,
     overflowDestinations: List<MusicDestination>,
     playbackSettings: PlaybackSettings,
     artistSettings: ArtistSettings,
@@ -54,11 +58,10 @@ internal fun LegacyPortMorePage(
     onAudioFxCustomGainDbPointsChange: (List<Float>) -> Unit,
     onArtistSeparatorsChange: (Set<String>) -> Unit,
     onTabPinnedChange: (String, Boolean) -> Unit,
+    onSettingsVisibleChange: (Boolean) -> Unit,
     onSettingsPageActiveChanged: (Boolean) -> Unit,
-    onSearchClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var settingsVisible by remember { mutableStateOf(false) }
     val settingsPredictiveBackState = rememberLegacyPortPredictiveBackState()
 
     LaunchedEffect(active, settingsVisible) {
@@ -85,14 +88,23 @@ internal fun LegacyPortMorePage(
             predictiveBackExitConsumed = settingsPredictiveBackState.exitConsumed,
             onPredictiveBackExitConsumedReset = settingsPredictiveBackState::reset,
             primaryContent = {
-                LegacyMoreRootPage(
-                    active = active,
-                    destinations = overflowDestinations,
-                    onDestinationSelected = onDestinationSelected,
-                    onSettingsClick = { settingsVisible = true },
-                    onSearchClick = onSearchClick,
-                    modifier = Modifier.fillMaxSize(),
-                )
+                Box(modifier = Modifier.fillMaxSize()) {
+                    LegacyMoreRootPage(
+                        active = active,
+                        externalTitleAreaHeight = externalTitleAreaHeight,
+                        destinations = overflowDestinations,
+                        onDestinationSelected = onDestinationSelected,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    LegacyPortTitleBarShadow(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .offset(y = externalTitleAreaHeight)
+                            .fillMaxWidth()
+                            .height(dimensionResource(R.dimen.title_bar_shadow_height))
+                            .zIndex(1f),
+                    )
+                }
             },
             secondaryContent = {
                 LegacyPortSettingsPage(
@@ -100,7 +112,7 @@ internal fun LegacyPortMorePage(
                     playbackSettings = playbackSettings,
                     artistSettings = artistSettings,
                     navigationSettings = navigationSettings,
-                    onClose = { settingsVisible = false },
+                    onClose = { onSettingsVisibleChange(false) },
                     onScratchEnabledChange = onScratchEnabledChange,
                     onHidePlayerAxisEnabledChange = onHidePlayerAxisEnabledChange,
                     onPopcornSoundEnabledChange = onPopcornSoundEnabledChange,
@@ -119,50 +131,29 @@ internal fun LegacyPortMorePage(
 @Composable
 private fun LegacyMoreRootPage(
     active: Boolean,
+    externalTitleAreaHeight: Dp,
     destinations: List<MusicDestination>,
     onDestinationSelected: (MusicDestination) -> Unit,
-    onSettingsClick: () -> Unit,
-    onSearchClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
         modifier = modifier
-            .fillMaxSize()
-            .background(colorResource(R.color.page_background)),
+            .fillMaxSize(),
     ) {
-        LegacyPortSmartisanTitleBar(
-            modifier = Modifier.fillMaxWidth(),
-            showShadow = true,
-        ) { titleBar ->
-            titleBar.setupLegacyMoreRootTitleBar(
-                onSettingsClick = onSettingsClick,
-                onSearchClick = onSearchClick,
-            )
-        }
+        Spacer(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(externalTitleAreaHeight),
+        )
         LegacyMoreRootList(
             active = active,
             destinations = destinations,
             onDestinationSelected = onDestinationSelected,
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f),
+                .weight(1f)
+                .background(colorResource(R.color.page_background)),
         )
-    }
-}
-
-private fun TitleBar.setupLegacyMoreRootTitleBar(
-    onSettingsClick: () -> Unit,
-    onSearchClick: () -> Unit,
-) {
-    removeAllLeftViews()
-    removeAllRightViews()
-    setShadowVisible(false)
-    setCenterText(R.string.tab_more)
-    addLeftImageView(R.drawable.standard_icon_settings_selector).setOnClickListener {
-        onSettingsClick()
-    }
-    addRightImageView(R.drawable.search_btn_selector).setOnClickListener {
-        onSearchClick()
     }
 }
 

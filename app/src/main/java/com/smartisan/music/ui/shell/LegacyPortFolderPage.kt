@@ -67,6 +67,7 @@ import com.smartisan.music.playback.replaceQueueAndPlayShuffled
 import com.smartisan.music.platform.text.HanLatinTransliterator
 import com.smartisan.music.ui.components.hasAudioPermission
 import com.smartisan.music.ui.shell.titlebar.LegacyPortSmartisanTitleBar
+import com.smartisan.music.ui.shell.titlebar.LegacyPortRootTitleBar
 import com.smartisan.music.ui.shell.titlebar.LegacyPortTitleBarShadow
 import com.smartisan.music.ui.shell.titlebar.LegacyPortTitleBarTransition
 import com.smartisan.music.ui.folder.DirectoryEntry
@@ -103,6 +104,7 @@ private data class LegacyFolderTarget(
 
 @Composable
 internal fun LegacyPortFolderPage(
+    rootTitleBar: LegacyPortRootTitleBar?,
     active: Boolean,
     libraryRefreshVersion: Int,
     libraryRefreshing: Boolean,
@@ -217,7 +219,8 @@ internal fun LegacyPortFolderPage(
                 predictiveBackExitConsumed = detailPredictiveBackState.exitConsumed,
                 onPredictiveBackExitConsumedReset = detailPredictiveBackState::reset,
                 primaryContent = {
-                    LegacyPortSmartisanTitleBar(
+                    LegacyPortRootTitleBar(
+                        rootTitleBar = rootTitleBar,
                         modifier = Modifier.fillMaxSize(),
                     ) { titleBar ->
                         titleBar.setupLegacyFolderTitleBar(

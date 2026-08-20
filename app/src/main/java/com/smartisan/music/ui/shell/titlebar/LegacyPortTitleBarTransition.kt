@@ -183,6 +183,8 @@ internal fun <T : Any> LegacyPortTitleBarTransition(
     predictiveBackProgress: Float? = null,
     predictiveBackExitConsumed: Boolean = false,
     onPredictiveBackExitConsumedReset: (() -> Unit)? = null,
+    onSecondaryExitComplete: (() -> Unit)? = null,
+    primaryVisibleWhenIdle: Boolean = true,
     primaryLeftContent: (@Composable () -> Unit)? = null,
     secondaryLeftContent: (@Composable (T) -> Unit)? = null,
     primaryContent: @Composable () -> Unit,
@@ -223,6 +225,7 @@ internal fun <T : Any> LegacyPortTitleBarTransition(
                 ),
             )
             retainedSecondaryKey = null
+            onSecondaryExitComplete?.invoke()
         }
     }
 
@@ -241,6 +244,7 @@ internal fun <T : Any> LegacyPortTitleBarTransition(
         direction = activeDirection,
     )
     val contentKey = secondaryKey ?: retainedSecondaryKey
+    val replacementVisible = primaryVisibleWhenIdle || contentKey != null
     val slidePx = with(LocalDensity.current) {
         LegacyTitleBarSlotSlideDistance.toPx()
     }
@@ -259,7 +263,8 @@ internal fun <T : Any> LegacyPortTitleBarTransition(
         secondaryLeftAlpha = leftMotion.secondaryAlpha,
         primaryLeftTranslationX = leftMotion.primaryTranslationX,
         secondaryLeftTranslationX = leftMotion.secondaryTranslationX,
-        primaryLeftContent = primaryLeftContent,
+        backgroundVisible = replacementVisible,
+        primaryLeftContent = primaryLeftContent.takeIf { replacementVisible },
         secondaryLeftContent = contentKey?.let { key ->
             secondaryLeftContent?.let { content ->
                 {
@@ -267,7 +272,11 @@ internal fun <T : Any> LegacyPortTitleBarTransition(
                 }
             }
         },
-        primaryContent = primaryContent,
+        primaryContent = {
+            if (replacementVisible) {
+                primaryContent()
+            }
+        },
         secondaryContent = contentKey?.let { key ->
             {
                 secondaryContent(key)
@@ -285,6 +294,7 @@ internal fun LegacyPortTitleBarReplacementLayers(
     primaryLeftTranslationX: Float,
     secondaryLeftTranslationX: Float,
     modifier: Modifier = Modifier,
+    backgroundVisible: Boolean = true,
     leftSlotWidth: Dp = LegacyTitleBarLeftSlotWidth,
     primaryLeftContent: (@Composable () -> Unit)? = null,
     secondaryLeftContent: (@Composable () -> Unit)? = null,
@@ -294,7 +304,13 @@ internal fun LegacyPortTitleBarReplacementLayers(
     BoxWithConstraints(
         modifier = modifier
             .clipToBounds()
-            .background(colorResource(R.color.title_bar_background)),
+            .then(
+                if (backgroundVisible) {
+                    Modifier.background(colorResource(R.color.title_bar_background))
+                } else {
+                    Modifier
+                },
+            ),
     ) {
         fun Modifier.titleLayer(alpha: Float): Modifier {
             return fillMaxSize().graphicsLayer {
