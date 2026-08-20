@@ -24,3 +24,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Music"
 include(":app")
+include(":netease-api")
