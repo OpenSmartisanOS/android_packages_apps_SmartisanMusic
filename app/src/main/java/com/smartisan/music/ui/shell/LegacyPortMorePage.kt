@@ -8,6 +8,7 @@ import android.view.animation.AnimationUtils
 import android.widget.BaseAdapter
 import android.widget.FrameLayout
 import android.widget.ListView
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +20,11 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.colorResource
@@ -27,14 +33,19 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
 import com.smartisan.music.R
+import com.smartisan.music.data.netease.NeteaseOnlinePhase
+import com.smartisan.music.data.netease.NeteaseOnlineState
 import com.smartisan.music.data.settings.ArtistSettings
 import com.smartisan.music.data.settings.AudioFxPreset
 import com.smartisan.music.data.settings.NavigationSettings
+import com.smartisan.music.data.settings.OnlineMusicSettings
 import com.smartisan.music.data.settings.PlaybackSettings
 import com.smartisan.music.ui.navigation.MusicDestination
 import com.smartisan.music.ui.shell.titlebar.LegacyPortTitleBarShadow
 import com.smartisan.music.ui.widgets.legacy.ListContentItemText
+import com.smartisan.music.ui.widgets.legacy.MenuDialog
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * `More` 只负责两个职责：列出当前没有固定到底栏的同级目的地，以及承载设置页。
@@ -49,6 +60,8 @@ internal fun LegacyPortMorePage(
     playbackSettings: PlaybackSettings,
     artistSettings: ArtistSettings,
     navigationSettings: NavigationSettings,
+    onlineMusicSettings: OnlineMusicSettings,
+    neteaseState: NeteaseOnlineState,
     onDestinationSelected: (MusicDestination) -> Unit,
     onScratchEnabledChange: (Boolean) -> Unit,
     onHidePlayerAxisEnabledChange: (Boolean) -> Unit,
@@ -58,20 +71,48 @@ internal fun LegacyPortMorePage(
     onAudioFxCustomGainDbPointsChange: (List<Float>) -> Unit,
     onArtistSeparatorsChange: (Set<String>) -> Unit,
     onTabPinnedChange: (String, Boolean) -> Unit,
+    onNeteaseEnabledChange: (Boolean) -> Unit,
+    onNeteaseRetry: () -> Unit,
+    onNeteaseLoginCookie: suspend (String) -> Boolean,
+    onNeteaseLogout: suspend () -> Boolean,
     onSettingsVisibleChange: (Boolean) -> Unit,
     onSettingsPageActiveChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
     val settingsPredictiveBackState = rememberLegacyPortPredictiveBackState()
+    var loginVisible by remember { mutableStateOf(false) }
+    var logoutConfirmationVisible by remember { mutableStateOf(false) }
+    val secondaryPage = LegacyMoreSecondaryPage.Settings.takeIf { settingsVisible }
+    val accountItem = remember(onlineMusicSettings, neteaseState, context) {
+        if (onlineMusicSettings.neteaseEnabled) {
+            neteaseState.toMoreAccountItem(context)
+        } else {
+            null
+        }
+    }
 
-    LaunchedEffect(active, settingsVisible) {
-        if (active && settingsVisible) {
+    LaunchedEffect(active, secondaryPage) {
+        if (active && secondaryPage != null) {
             onSettingsPageActiveChanged(true)
         } else {
-            if (!settingsVisible) {
+            if (secondaryPage == null) {
                 delay(LegacyPageStackSlideMillis.toLong())
             }
             onSettingsPageActiveChanged(false)
+        }
+    }
+    LaunchedEffect(onlineMusicSettings.neteaseEnabled) {
+        if (!onlineMusicSettings.neteaseEnabled) {
+            loginVisible = false
+            logoutConfirmationVisible = false
+        }
+    }
+    LaunchedEffect(active) {
+        if (!active) {
+            loginVisible = false
+            logoutConfirmationVisible = false
         }
     }
     DisposableEffect(Unit) {
@@ -80,9 +121,9 @@ internal fun LegacyPortMorePage(
 
     Box(modifier = modifier.fillMaxSize()) {
         LegacyPortPageStackTransition(
-            secondaryKey = settingsVisible.takeIf { it },
+            secondaryKey = secondaryPage,
             modifier = Modifier.fillMaxSize(),
-            label = "legacy more settings stack",
+            label = "legacy more secondary stack",
             axisForKey = { LegacyPortPageStackAxis.VerticalPush },
             predictiveBackProgress = settingsPredictiveBackState.progress,
             predictiveBackExitConsumed = settingsPredictiveBackState.exitConsumed,
@@ -93,7 +134,22 @@ internal fun LegacyPortMorePage(
                         active = active,
                         externalTitleAreaHeight = externalTitleAreaHeight,
                         destinations = overflowDestinations,
+                        accountItem = accountItem,
                         onDestinationSelected = onDestinationSelected,
+                        onAccountSelected = {
+                            when (neteaseState.phase) {
+                                NeteaseOnlinePhase.LoggedOut -> loginVisible = true
+                                NeteaseOnlinePhase.Ready -> logoutConfirmationVisible = true
+                                NeteaseOnlinePhase.Error -> {
+                                    if (neteaseState.sessionPresent) {
+                                        logoutConfirmationVisible = true
+                                    } else {
+                                        onNeteaseRetry()
+                                    }
+                                }
+                                else -> Unit
+                            }
+                        },
                         modifier = Modifier.fillMaxSize(),
                     )
                     LegacyPortTitleBarShadow(
@@ -112,6 +168,7 @@ internal fun LegacyPortMorePage(
                     playbackSettings = playbackSettings,
                     artistSettings = artistSettings,
                     navigationSettings = navigationSettings,
+                    onlineMusicSettings = onlineMusicSettings,
                     onClose = { onSettingsVisibleChange(false) },
                     onScratchEnabledChange = onScratchEnabledChange,
                     onHidePlayerAxisEnabledChange = onHidePlayerAxisEnabledChange,
@@ -121,10 +178,43 @@ internal fun LegacyPortMorePage(
                     onAudioFxCustomGainDbPointsChange = onAudioFxCustomGainDbPointsChange,
                     onArtistSeparatorsChange = onArtistSeparatorsChange,
                     onTabPinnedChange = onTabPinnedChange,
+                    onNeteaseEnabledChange = onNeteaseEnabledChange,
                     modifier = Modifier.fillMaxSize(),
                 )
             },
         )
+    }
+
+    LegacyNeteaseLoginDialog(
+        visible = loginVisible && active && onlineMusicSettings.neteaseEnabled,
+        onClose = { loginVisible = false },
+        onLoginCookie = onNeteaseLoginCookie,
+    )
+
+    if (logoutConfirmationVisible) {
+        DisposableEffect(Unit) {
+            val dialog = MenuDialog(context).apply {
+                setTitle(R.string.netease_logout_confirm)
+                setPositiveButton(R.string.netease_logout) {
+                    logoutConfirmationVisible = false
+                    scope.launch {
+                        if (!onNeteaseLogout()) {
+                            Toast.makeText(
+                                context,
+                                R.string.netease_logout_failed,
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                    }
+                }
+                setPositiveRedBg(true)
+                setOnDismissListener {
+                    logoutConfirmationVisible = false
+                }
+            }
+            dialog.show()
+            onDispose { dialog.dismiss() }
+        }
     }
 }
 
@@ -133,7 +223,9 @@ private fun LegacyMoreRootPage(
     active: Boolean,
     externalTitleAreaHeight: Dp,
     destinations: List<MusicDestination>,
+    accountItem: LegacyMoreAccountItem?,
     onDestinationSelected: (MusicDestination) -> Unit,
+    onAccountSelected: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -148,7 +240,9 @@ private fun LegacyMoreRootPage(
         LegacyMoreRootList(
             active = active,
             destinations = destinations,
+            accountItem = accountItem,
             onDestinationSelected = onDestinationSelected,
+            onAccountSelected = onAccountSelected,
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
@@ -161,7 +255,9 @@ private fun LegacyMoreRootPage(
 private fun LegacyMoreRootList(
     active: Boolean,
     destinations: List<MusicDestination>,
+    accountItem: LegacyMoreAccountItem?,
     onDestinationSelected: (MusicDestination) -> Unit,
+    onAccountSelected: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     AndroidView(
@@ -189,32 +285,50 @@ private fun LegacyMoreRootList(
                     listView.adapter = nextAdapter
                     listView.scheduleLayoutAnimation()
                 }
-            adapter.submitList(destinations)
+            adapter.submitList(accountItem, destinations)
             listView.setOnItemClickListener { _, _, position, _ ->
-                adapter.itemAt(position)?.let(onDestinationSelected)
+                when (val item = adapter.itemAt(position)) {
+                    LegacyMoreRootItem.Account -> {
+                        if (accountItem?.enabled == true) onAccountSelected()
+                    }
+                    is LegacyMoreRootItem.Destination -> onDestinationSelected(item.destination)
+                    null -> Unit
+                }
             }
         },
     )
 }
 
 private class LegacyMoreRootAdapter : BaseAdapter() {
-    private var destinations: List<MusicDestination> = emptyList()
+    private var accountItem: LegacyMoreAccountItem? = null
+    private var items: List<LegacyMoreRootItem> = emptyList()
 
-    fun submitList(nextDestinations: List<MusicDestination>) {
-        if (destinations == nextDestinations) {
+    fun submitList(
+        nextAccountItem: LegacyMoreAccountItem?,
+        nextDestinations: List<MusicDestination>,
+    ) {
+        val nextItems = buildList {
+            if (nextAccountItem != null) add(LegacyMoreRootItem.Account)
+            nextDestinations.forEach { destination -> add(LegacyMoreRootItem.Destination(destination)) }
+        }
+        if (accountItem == nextAccountItem && items == nextItems) {
             return
         }
-        destinations = nextDestinations
+        accountItem = nextAccountItem
+        items = nextItems
         notifyDataSetChanged()
     }
 
-    fun itemAt(position: Int): MusicDestination? = destinations.getOrNull(position)
+    fun itemAt(position: Int): LegacyMoreRootItem? = items.getOrNull(position)
 
-    override fun getCount(): Int = destinations.size
+    override fun getCount(): Int = items.size
 
-    override fun getItem(position: Int): Any = destinations[position]
+    override fun getItem(position: Int): Any = items[position]
 
-    override fun getItemId(position: Int): Long = destinations[position].route.hashCode().toLong()
+    override fun getItemId(position: Int): Long = when (val item = items[position]) {
+        LegacyMoreRootItem.Account -> Long.MIN_VALUE
+        is LegacyMoreRootItem.Destination -> item.destination.route.hashCode().toLong()
+    }
 
     override fun hasStableIds(): Boolean = true
 
@@ -224,12 +338,80 @@ private class LegacyMoreRootAdapter : BaseAdapter() {
         val itemView = (view as? ListContentItemText)
             ?: view.findViewById<ListContentItemText>(R.id.list_content_item)
             ?: return view
-        val destination = destinations[position]
-        itemView.setIcon(destination.overflowIconRes)
-        itemView.setTitle(parent.context.getString(destination.labelRes))
-        itemView.setSummary(null)
+        when (val item = items[position]) {
+            LegacyMoreRootItem.Account -> {
+                val account = accountItem ?: return view
+                itemView.setIcon(R.drawable.ic_account_box)
+                itemView.setTitle(account.title)
+                itemView.setSummary(account.summary)
+                itemView.isEnabled = account.enabled
+                itemView.alpha = if (account.enabled) 1f else 0.6f
+            }
+            is LegacyMoreRootItem.Destination -> {
+                val destination = item.destination
+                itemView.setIcon(destination.overflowIconRes)
+                itemView.setTitle(parent.context.getString(destination.labelRes))
+                itemView.setSummary(null)
+                itemView.isEnabled = true
+                itemView.alpha = 1f
+            }
+        }
         itemView.setSubtitle(null)
         itemView.setArrowVisible(true)
         return view
+    }
+}
+
+private enum class LegacyMoreSecondaryPage {
+    Settings,
+}
+
+private data class LegacyMoreAccountItem(
+    val title: String,
+    val summary: String?,
+    val enabled: Boolean,
+)
+
+private sealed interface LegacyMoreRootItem {
+    data object Account : LegacyMoreRootItem
+
+    data class Destination(val destination: MusicDestination) : LegacyMoreRootItem
+}
+
+private fun NeteaseOnlineState.toMoreAccountItem(context: android.content.Context): LegacyMoreAccountItem {
+    return when (phase) {
+        NeteaseOnlinePhase.LoggedOut -> LegacyMoreAccountItem(
+            title = context.getString(R.string.netease_login),
+            summary = null,
+            enabled = true,
+        )
+        NeteaseOnlinePhase.Disabled,
+        NeteaseOnlinePhase.CheckingSession,
+        -> LegacyMoreAccountItem(
+            title = context.getString(R.string.netease_service_name),
+            summary = context.getString(R.string.netease_login_checking),
+            enabled = false,
+        )
+        NeteaseOnlinePhase.LoadingPlaylists -> LegacyMoreAccountItem(
+            title = profile?.nickname ?: context.getString(R.string.netease_service_name),
+            summary = context.getString(R.string.netease_login_checking),
+            enabled = false,
+        )
+        NeteaseOnlinePhase.Ready -> LegacyMoreAccountItem(
+            title = profile?.nickname ?: context.getString(R.string.netease_service_name),
+            summary = context.getString(R.string.netease_service_name),
+            enabled = true,
+        )
+        NeteaseOnlinePhase.Error -> LegacyMoreAccountItem(
+            title = profile?.nickname ?: context.getString(R.string.netease_service_name),
+            summary = context.getString(
+                if (sessionPresent) {
+                    R.string.netease_account_connection_error
+                } else {
+                    R.string.netease_login_retry
+                },
+            ),
+            enabled = true,
+        )
     }
 }

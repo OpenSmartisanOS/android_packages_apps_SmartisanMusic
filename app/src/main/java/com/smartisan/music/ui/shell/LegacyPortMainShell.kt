@@ -41,6 +41,8 @@ import com.smartisan.music.R
 import com.smartisan.music.data.favorite.FavoriteSongsRepository
 import com.smartisan.music.data.library.LibraryExclusions
 import com.smartisan.music.data.library.LibraryExclusionsStore
+import com.smartisan.music.data.netease.DefaultNeteaseAccountGatewayFactory
+import com.smartisan.music.data.netease.NeteaseOnlineController
 import com.smartisan.music.data.playlist.PlaylistCreateResult
 import com.smartisan.music.data.playlist.PlaylistRepository
 import com.smartisan.music.data.settings.ArtistSettings
@@ -49,6 +51,8 @@ import com.smartisan.music.data.settings.LibraryDisplaySettings
 import com.smartisan.music.data.settings.LibraryDisplaySettingsStore
 import com.smartisan.music.data.settings.NavigationSettings
 import com.smartisan.music.data.settings.NavigationSettingsStore
+import com.smartisan.music.data.settings.OnlineMusicSettings
+import com.smartisan.music.data.settings.OnlineMusicSettingsStore
 import com.smartisan.music.data.settings.PlaybackSettings
 import com.smartisan.music.data.settings.PlaybackSettingsStore
 import com.smartisan.music.isExternalAudioLaunchItem
@@ -148,6 +152,15 @@ private fun LegacyPortMainShellContent(
     val navigationSettingsStore = remember(context.applicationContext) {
         NavigationSettingsStore(context.applicationContext)
     }
+    val onlineMusicSettingsStore = remember(context.applicationContext) {
+        OnlineMusicSettingsStore(context.applicationContext)
+    }
+    val neteaseOnlineController = remember(context.applicationContext, scope) {
+        NeteaseOnlineController(
+            gatewayFactory = DefaultNeteaseAccountGatewayFactory(context.applicationContext),
+            scope = scope,
+        )
+    }
     val favoriteIds by favoriteRepository.observeFavoriteIds().collectAsState(initial = emptySet())
     val libraryExclusions by libraryExclusionsStore.exclusions.collectAsState(initial = LibraryExclusions())
     val playbackSettings by playbackSettingsStore.settings.collectAsState(initial = PlaybackSettings())
@@ -156,6 +169,10 @@ private fun LegacyPortMainShellContent(
     val persistedNavigationSettings: NavigationSettings? by navigationSettingsStore.settings.collectAsState(
         initial = null,
     )
+    val onlineMusicSettings by onlineMusicSettingsStore.settings.collectAsState(
+        initial = OnlineMusicSettings(),
+    )
+    val neteaseState by neteaseOnlineController.state.collectAsState()
     val navigationSettings = persistedNavigationSettings ?: NavigationSettings()
     val albumViewMode = libraryDisplaySettings.albumViewMode
     val artistAlbumViewMode = libraryDisplaySettings.artistAlbumViewMode
@@ -171,10 +188,14 @@ private fun LegacyPortMainShellContent(
     var playlistAddModeActive by remember { mutableStateOf(false) }
     var playlistRootPageActive by remember { mutableStateOf(true) }
     var moreSettingsVisible by remember { mutableStateOf(false) }
-    var moreSettingsPageActive by remember { mutableStateOf(false) }
+    var moreSecondaryPageActive by remember { mutableStateOf(false) }
     var navigationEditorVisible by remember { mutableStateOf(false) }
     var navigationLayoutInitialized by remember { mutableStateOf(false) }
     val persistentRootTitleBar = rememberLegacyPortRootTitleBar()
+
+    DisposableEffect(neteaseOnlineController) {
+        onDispose { neteaseOnlineController.close() }
+    }
 
     val navigationLayout = navigationSettings.layout
     // 加歌模式只临时替换底栏末位，不污染用户保存的导航布局。
@@ -204,6 +225,14 @@ private fun LegacyPortMainShellContent(
     var playlistEditMode by remember { mutableStateOf(false) }
     var selectedPlaylistIds by remember { mutableStateOf(emptySet<String>()) }
     var playlistDeleteRequested by remember { mutableStateOf(false) }
+    LaunchedEffect(onlineMusicSettings.neteaseEnabled) {
+        neteaseOnlineController.setEnabled(onlineMusicSettings.neteaseEnabled)
+        playlistAddModeActive = false
+        playlistRootPageActive = true
+        playlistEditMode = false
+        selectedPlaylistIds = emptySet()
+        playlistDeleteRequested = false
+    }
     var albumEditMode by remember { mutableStateOf(false) }
     var selectedAlbumIds by remember { mutableStateOf(emptySet<String>()) }
     var selectedAlbumId by remember { mutableStateOf<String?>(null) }
@@ -580,12 +609,12 @@ private fun LegacyPortMainShellContent(
         bottomNavigationHeight
     }
     val playbackBarOverlayHeight = if (playbackBarComposed) playbackBarHeight else 0.dp
-    val hideBottomChrome = currentDestination == MusicDestination.More && moreSettingsPageActive
+    val hideBottomChrome = currentDestination == MusicDestination.More && moreSecondaryPageActive
 
     LaunchedEffect(currentDestination) {
         if (currentDestination != MusicDestination.More) {
             moreSettingsVisible = false
-            moreSettingsPageActive = false
+            moreSecondaryPageActive = false
         }
     }
 
@@ -684,6 +713,7 @@ private fun LegacyPortMainShellContent(
                             },
                             playlistEditMode = playlistEditMode,
                             playlistSelectedCount = selectedPlaylistIds.size,
+                            playlistActionsEnabled = !onlineMusicSettings.neteaseEnabled,
                             onEnterPlaylistEditMode = {
                                 playlistEditMode = true
                                 selectedPlaylistIds = emptySet()
@@ -708,6 +738,7 @@ private fun LegacyPortMainShellContent(
                             MusicDestination.Playlist -> playlistRootPageActive
                             MusicDestination.Artist -> selectedArtistTarget == null
                             MusicDestination.Album -> selectedAlbumId == null
+                            MusicDestination.More -> !moreSecondaryPageActive
                             else -> true
                         }
                     if (shouldKeepLegacyPortStableRootTitleBarHost(destination, fromMore)) {
@@ -722,6 +753,7 @@ private fun LegacyPortMainShellContent(
                             artistAlbumViewMode = artistAlbumViewMode,
                             playlistEditMode = playlistEditMode,
                             playlistSelectedCount = selectedPlaylistIds.size,
+                            playlistActionsEnabled = !onlineMusicSettings.neteaseEnabled,
                             onEnterSongsEditMode = {
                                 songsEditMode = true
                                 selectedSongIds = emptySet()
@@ -869,6 +901,8 @@ private fun LegacyPortMainShellContent(
                         libraryRefreshing = libraryRefreshing,
                         playbackSettings = playbackSettings,
                         artistSettings = artistSettings,
+                        onlineMusicSettings = onlineMusicSettings,
+                        neteaseState = neteaseState,
                         onRefreshLibrary = ::refreshLegacyLibrary,
                         onRequestAddToPlaylist = ::requestAddToPlaylist,
                         onRequestAddToQueue = ::enqueueMediaItems,
@@ -909,6 +943,15 @@ private fun LegacyPortMainShellContent(
                             selectedArtistTarget = null
                             searchDrilldownTarget = null
                         },
+                        onNeteaseEnabledChange = { enabled ->
+                            scope.launch {
+                                onlineMusicSettingsStore.setNeteaseEnabled(enabled)
+                            }
+                        },
+                        onNeteaseRetry = neteaseOnlineController::retry,
+                        onNeteasePlaylistDetail = neteaseOnlineController::playlistDetail,
+                        onNeteaseLoginCookie = neteaseOnlineController::importLoginCookie,
+                        onNeteaseLogout = neteaseOnlineController::logout,
                         navigationSettings = navigationSettings,
                         onTabPinnedChange = { route, pinned ->
                             scope.launch {
@@ -953,7 +996,7 @@ private fun LegacyPortMainShellContent(
                             moreSettingsVisible = visible
                         },
                         onMoreSettingsPageActiveChanged = { active ->
-                            moreSettingsPageActive = active
+                            moreSecondaryPageActive = active
                         },
                         onSongSelectionChange = { mediaId, selected ->
                             selectedSongIds = selectedSongIds.withSelection(mediaId, selected)

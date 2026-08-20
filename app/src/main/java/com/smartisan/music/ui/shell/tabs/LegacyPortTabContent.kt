@@ -16,10 +16,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.media3.common.MediaItem
 import com.smartisan.music.data.favorite.FavoriteSongRecord
+import com.smartisan.music.data.netease.NeteaseOnlineState
 import com.smartisan.music.data.settings.ArtistSettings
 import com.smartisan.music.data.settings.AudioFxPreset
 import com.smartisan.music.data.settings.NavigationSettings
+import com.smartisan.music.data.settings.OnlineMusicSettings
 import com.smartisan.music.data.settings.PlaybackSettings
+import com.smartisan.music.netease.NeteasePlaylistDetail
+import com.smartisan.music.netease.NeteaseResult
 import com.smartisan.music.ui.album.AlbumViewMode
 import com.smartisan.music.ui.navigation.MusicDestination
 import com.smartisan.music.ui.shell.LegacyArtistTarget
@@ -72,6 +76,8 @@ internal fun LegacyPortTabContent(
     libraryRefreshing: Boolean,
     playbackSettings: PlaybackSettings,
     artistSettings: ArtistSettings,
+    onlineMusicSettings: OnlineMusicSettings,
+    neteaseState: NeteaseOnlineState,
     onRefreshLibrary: () -> Unit,
     onRequestAddToPlaylist: (List<MediaItem>) -> Unit,
     onRequestAddToQueue: (List<MediaItem>) -> Unit,
@@ -82,6 +88,11 @@ internal fun LegacyPortTabContent(
     onAudioFxPresetChange: (AudioFxPreset) -> Unit,
     onAudioFxCustomGainDbPointsChange: (List<Float>) -> Unit,
     onArtistSeparatorsChange: (Set<String>) -> Unit,
+    onNeteaseEnabledChange: (Boolean) -> Unit,
+    onNeteaseRetry: () -> Unit,
+    onNeteasePlaylistDetail: suspend (Long) -> NeteaseResult<NeteasePlaylistDetail>,
+    onNeteaseLoginCookie: suspend (String) -> Boolean,
+    onNeteaseLogout: suspend () -> Boolean,
     navigationSettings: NavigationSettings,
     onTabPinnedChange: (String, Boolean) -> Unit,
     onOverflowDestinationSelected: (MusicDestination) -> Unit,
@@ -141,6 +152,10 @@ internal fun LegacyPortTabContent(
                 selectedPlaylistIds = selectedPlaylistIds,
                 rootDeleteRequested = playlistDeleteRequested,
                 hiddenMediaIds = hiddenMediaIds,
+                onlineMusicSettings = onlineMusicSettings,
+                neteaseState = neteaseState,
+                onNeteaseRetry = onNeteaseRetry,
+                onNeteasePlaylistDetail = onNeteasePlaylistDetail,
                 onTrackMoreClick = onPlaylistTrackMoreClick,
                 onRootEditModeChange = onPlaylistEditModeChange,
                 onSelectedPlaylistIdsChange = onSelectedPlaylistIdsChange,
@@ -246,6 +261,8 @@ internal fun LegacyPortTabContent(
                 playbackSettings = playbackSettings,
                 artistSettings = artistSettings,
                 navigationSettings = navigationSettings,
+                onlineMusicSettings = onlineMusicSettings,
+                neteaseState = neteaseState,
                 onDestinationSelected = onOverflowDestinationSelected,
                 onScratchEnabledChange = onScratchEnabledChange,
                 onHidePlayerAxisEnabledChange = onHidePlayerAxisEnabledChange,
@@ -255,6 +272,10 @@ internal fun LegacyPortTabContent(
                 onAudioFxCustomGainDbPointsChange = onAudioFxCustomGainDbPointsChange,
                 onArtistSeparatorsChange = onArtistSeparatorsChange,
                 onTabPinnedChange = onTabPinnedChange,
+                onNeteaseEnabledChange = onNeteaseEnabledChange,
+                onNeteaseRetry = onNeteaseRetry,
+                onNeteaseLoginCookie = onNeteaseLoginCookie,
+                onNeteaseLogout = onNeteaseLogout,
                 onSettingsVisibleChange = onMoreSettingsVisibleChange,
                 onSettingsPageActiveChanged = onMoreSettingsPageActiveChanged,
                 modifier = Modifier

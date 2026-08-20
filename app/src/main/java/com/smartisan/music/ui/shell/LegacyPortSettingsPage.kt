@@ -50,6 +50,7 @@ import com.smartisan.music.data.settings.AudioFxMaxGainDb
 import com.smartisan.music.data.settings.AudioFxMinGainDb
 import com.smartisan.music.data.settings.AudioFxPreset
 import com.smartisan.music.data.settings.NavigationSettings
+import com.smartisan.music.data.settings.OnlineMusicSettings
 import com.smartisan.music.data.settings.PlaybackSettings
 import com.smartisan.music.data.settings.equalizerGainDbPoints
 import com.smartisan.music.data.settings.normalizeAudioFxGainDbPoints
@@ -69,6 +70,7 @@ internal fun LegacyPortSettingsPage(
     playbackSettings: PlaybackSettings,
     artistSettings: ArtistSettings,
     navigationSettings: NavigationSettings,
+    onlineMusicSettings: OnlineMusicSettings,
     onClose: () -> Unit,
     onScratchEnabledChange: (Boolean) -> Unit,
     onHidePlayerAxisEnabledChange: (Boolean) -> Unit,
@@ -78,6 +80,7 @@ internal fun LegacyPortSettingsPage(
     onAudioFxCustomGainDbPointsChange: (List<Float>) -> Unit,
     onArtistSeparatorsChange: (Set<String>) -> Unit,
     onTabPinnedChange: (String, Boolean) -> Unit,
+    onNeteaseEnabledChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -113,6 +116,7 @@ internal fun LegacyPortSettingsPage(
                 playbackSettings = playbackSettings,
                 artistSettings = artistSettings,
                 navigationSettings = navigationSettings,
+                onlineMusicSettings = onlineMusicSettings,
                 onClose = onClose,
                 onScratchEnabledChange = onScratchEnabledChange,
                 onHidePlayerAxisEnabledChange = onHidePlayerAxisEnabledChange,
@@ -124,6 +128,7 @@ internal fun LegacyPortSettingsPage(
                     artistSeparatorsInitialValues = artistSettings.separators
                     editingArtistSeparators = true
                 },
+                onNeteaseEnabledChange = onNeteaseEnabledChange,
                 onNavigationClick = {
                     secondaryPage = LegacySettingsSecondaryPage.Navigation
                 },
@@ -215,12 +220,14 @@ private fun LegacySettingsRootPage(
     playbackSettings: PlaybackSettings,
     artistSettings: ArtistSettings,
     navigationSettings: NavigationSettings,
+    onlineMusicSettings: OnlineMusicSettings,
     onClose: () -> Unit,
     onScratchEnabledChange: (Boolean) -> Unit,
     onHidePlayerAxisEnabledChange: (Boolean) -> Unit,
     onPopcornSoundEnabledChange: (Boolean) -> Unit,
     onAudioFxClick: () -> Unit,
     onArtistSeparatorsClick: () -> Unit,
+    onNeteaseEnabledChange: (Boolean) -> Unit,
     onNavigationClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -252,11 +259,13 @@ private fun LegacySettingsRootPage(
                     settings = playbackSettings,
                     artistSettings = artistSettings,
                     navigationSettings = navigationSettings,
+                    onlineMusicSettings = onlineMusicSettings,
                     onScratchEnabledChange = onScratchEnabledChange,
                     onHidePlayerAxisEnabledChange = onHidePlayerAxisEnabledChange,
                     onPopcornSoundEnabledChange = onPopcornSoundEnabledChange,
                     onAudioFxClick = onAudioFxClick,
                     onArtistSeparatorsClick = onArtistSeparatorsClick,
+                    onNeteaseEnabledChange = onNeteaseEnabledChange,
                     onNavigationClick = onNavigationClick,
                 )
             },
@@ -455,6 +464,7 @@ private class LegacySettingsContentView(context: Context) : ScrollView(context) 
         showArrow = true,
     )
     private val artistSeparatorsRow = LegacySettingsValueRow(context, R.string.artist_separators)
+    private val onlineModeRow = LegacySettingsSwitchRow(context, R.string.netease_online_mode)
     private val bottomTabRow = LegacySettingsValueRow(
         context = context,
         titleRes = R.string.bottom_tab_visibility,
@@ -490,7 +500,8 @@ private class LegacySettingsContentView(context: Context) : ScrollView(context) 
         content.addView(
             settingsGroup(
                 context,
-                artistSeparatorsRow to LegacySettingsRowShape.Single,
+                onlineModeRow to LegacySettingsRowShape.Top,
+                artistSeparatorsRow to LegacySettingsRowShape.Bottom,
             ),
         )
         content.addView(gapView(context))
@@ -508,11 +519,13 @@ private class LegacySettingsContentView(context: Context) : ScrollView(context) 
         settings: PlaybackSettings,
         artistSettings: ArtistSettings,
         navigationSettings: NavigationSettings,
+        onlineMusicSettings: OnlineMusicSettings,
         onScratchEnabledChange: (Boolean) -> Unit,
         onHidePlayerAxisEnabledChange: (Boolean) -> Unit,
         onPopcornSoundEnabledChange: (Boolean) -> Unit,
         onAudioFxClick: () -> Unit,
         onArtistSeparatorsClick: () -> Unit,
+        onNeteaseEnabledChange: (Boolean) -> Unit,
         onNavigationClick: () -> Unit,
     ) {
         scratchRow.bind(settings.scratchEnabled, onScratchEnabledChange)
@@ -525,6 +538,10 @@ private class LegacySettingsContentView(context: Context) : ScrollView(context) 
         artistSeparatorsRow.bind(
             value = artistSettings.separators.toSeparatorSummary(context),
             onClick = onArtistSeparatorsClick,
+        )
+        onlineModeRow.bind(
+            checked = onlineMusicSettings.neteaseEnabled,
+            onCheckedChange = onNeteaseEnabledChange,
         )
         bottomTabRow.bind(
             value = navigationSettings.toNavigationSummary(context),

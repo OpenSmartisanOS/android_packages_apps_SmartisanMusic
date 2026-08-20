@@ -49,7 +49,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -94,6 +93,8 @@ internal fun LegacyPlaylistRootPage(
     onRenamePlaylist: (UserPlaylistSummary) -> Unit,
     onPlaylistClick: (UserPlaylistSummary) -> Unit,
     onPlaylistSelectionChange: (UserPlaylistSummary, Boolean) -> Unit,
+    showAddRow: Boolean = true,
+    blankContent: LegacyPlaylistBlankContent? = null,
     modifier: Modifier = Modifier,
 ) {
     AndroidView(
@@ -111,10 +112,21 @@ internal fun LegacyPlaylistRootPage(
                 onRenamePlaylist = onRenamePlaylist,
                 onPlaylistClick = onPlaylistClick,
                 onPlaylistSelectionChange = onPlaylistSelectionChange,
+                showAddRow = showAddRow,
+                blankContent = blankContent ?: LegacyPlaylistBlankContent(
+                    primaryText = root.context.getString(R.string.no_playlist),
+                    secondaryText = root.context.getString(R.string.create_playlist),
+                ),
             )
         },
     )
 }
+
+internal data class LegacyPlaylistBlankContent(
+    val primaryText: String,
+    val secondaryText: String,
+    val onClick: (() -> Unit)? = null,
+)
 
 private class LegacyPlaylistRootView(context: Context) : FrameLayout(context) {
     private val addRow = LinearLayout(context)
@@ -188,7 +200,13 @@ private class LegacyPlaylistRootView(context: Context) : FrameLayout(context) {
         onRenamePlaylist: (UserPlaylistSummary) -> Unit,
         onPlaylistClick: (UserPlaylistSummary) -> Unit,
         onPlaylistSelectionChange: (UserPlaylistSummary, Boolean) -> Unit,
+        showAddRow: Boolean = true,
+        blankContent: LegacyPlaylistBlankContent = LegacyPlaylistBlankContent(
+            primaryText = context.getString(R.string.no_playlist),
+            secondaryText = context.getString(R.string.create_playlist),
+        ),
     ) {
+        addRow.visibility = if (showAddRow) View.VISIBLE else View.GONE
         addRow.alpha = if (editMode) 0.35f else 1f
         addRow.isEnabled = !editMode
         addRow.setOnClickListener {
@@ -196,6 +214,12 @@ private class LegacyPlaylistRootView(context: Context) : FrameLayout(context) {
                 onCreatePlaylist()
             }
         }
+        blankView.bind(
+            iconRes = R.drawable.blank_playlist,
+            primaryText = blankContent.primaryText,
+            secondaryText = blankContent.secondaryText,
+            onClick = blankContent.onClick,
+        )
         blankView.visibility = if (playlists.isEmpty()) View.VISIBLE else View.GONE
         listView.visibility = if (playlists.isEmpty()) View.INVISIBLE else View.VISIBLE
         listView.bindLegacyPortListFooter(
@@ -256,10 +280,9 @@ private class LegacyPlaylistRootView(context: Context) : FrameLayout(context) {
             slideSelectionController.handleTouch(event)
         }
         listView.setOnItemClickListener { _, _, position, _ ->
-            if (position >= adapter.count) {
-                return@setOnItemClickListener
+            if (position < adapter.count) {
+                adapter.itemAt(position)?.let(onPlaylistClick)
             }
-            onPlaylistClick(adapter.itemAt(position) ?: return@setOnItemClickListener)
         }
     }
 

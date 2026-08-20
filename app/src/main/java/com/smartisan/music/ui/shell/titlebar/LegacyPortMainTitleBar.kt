@@ -44,6 +44,7 @@ internal fun LegacyPortTitleBar(
     onOpenMoreSettings: () -> Unit = {},
     playlistEditMode: Boolean = false,
     playlistSelectedCount: Int = 0,
+    playlistActionsEnabled: Boolean = true,
     onEnterPlaylistEditMode: () -> Unit = {},
     onExitPlaylistEditMode: () -> Unit = {},
     onDeleteSelectedPlaylists: () -> Unit = {},
@@ -78,6 +79,7 @@ internal fun LegacyPortTitleBar(
             onOpenMoreSettings = onOpenMoreSettings,
             playlistEditMode = playlistEditMode,
             playlistSelectedCount = playlistSelectedCount,
+            playlistActionsEnabled = playlistActionsEnabled,
             onEnterPlaylistEditMode = onEnterPlaylistEditMode,
             onExitPlaylistEditMode = onExitPlaylistEditMode,
             onDeleteSelectedPlaylists = onDeleteSelectedPlaylists,
@@ -97,6 +99,7 @@ internal fun LegacyPortStableRootTitleBarHost(
     artistAlbumViewMode: AlbumViewMode,
     playlistEditMode: Boolean,
     playlistSelectedCount: Int,
+    playlistActionsEnabled: Boolean = true,
     onEnterSongsEditMode: () -> Unit,
     onExitSongsEditMode: () -> Unit,
     onRequestDeleteSelected: () -> Unit,
@@ -164,6 +167,9 @@ internal fun LegacyPortStableRootTitleBarHost(
                     layerDestination == MusicDestination.Album
                 },
                 hasRootBack = hasRootBack,
+                playlistActionsEnabled = playlistActionsEnabled.takeIf {
+                    layerDestination == MusicDestination.Playlist
+                },
             )
             val active = visible && destination == layerDestination
             LegacyPortSmartisanTitleBar(
@@ -198,6 +204,7 @@ internal fun LegacyPortStableRootTitleBarHost(
                     onOpenMoreSettings = stableOnOpenMoreSettings,
                     playlistEditMode = playlistEditMode,
                     playlistSelectedCount = playlistSelectedCount,
+                    playlistActionsEnabled = playlistActionsEnabled,
                     onEnterPlaylistEditMode = stableOnEnterPlaylistEditMode,
                     onExitPlaylistEditMode = stableOnExitPlaylistEditMode,
                     onDeleteSelectedPlaylists = stableOnDeleteSelectedPlaylists,
@@ -213,6 +220,7 @@ private data class LegacyPortStableRootTitleBarKey(
     val selectionEnabled: Boolean,
     val albumViewMode: AlbumViewMode?,
     val hasRootBack: Boolean,
+    val playlistActionsEnabled: Boolean?,
 )
 
 private val StableRootTitleBarDestinations = listOf(
@@ -282,6 +290,7 @@ private fun TitleBar.setupLegacyMainTitleBar(
     onOpenMoreSettings: () -> Unit,
     playlistEditMode: Boolean,
     playlistSelectedCount: Int,
+    playlistActionsEnabled: Boolean,
     onEnterPlaylistEditMode: () -> Unit,
     onExitPlaylistEditMode: () -> Unit,
     onDeleteSelectedPlaylists: () -> Unit,
@@ -292,6 +301,7 @@ private fun TitleBar.setupLegacyMainTitleBar(
             detailTitle = "",
             rootEditMode = playlistEditMode,
             rootSelectedCount = playlistSelectedCount,
+            rootActionsEnabled = playlistActionsEnabled,
             detailEditMode = false,
             onRootEnterEdit = onEnterPlaylistEditMode,
             onRootExitEdit = onExitPlaylistEditMode,

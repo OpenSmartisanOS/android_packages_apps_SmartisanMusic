@@ -53,6 +53,11 @@ internal fun LegacyPlaylistDetailPage(
     onTrackSelectionChange: (String, Boolean) -> Unit,
     onTrackClick: (MediaItem, Int) -> Unit,
     onTrackMoreClick: (MediaItem) -> Unit,
+    headerActionsEnabled: Boolean = true,
+    trackClicksEnabled: Boolean = true,
+    trackMoreEnabled: Boolean = true,
+    emptyContent: LegacyPlaylistBlankContent? = null,
+    loadingContent: LegacyPlaylistBlankContent? = null,
     modifier: Modifier = Modifier,
 ) {
     AndroidView(
@@ -79,6 +84,11 @@ internal fun LegacyPlaylistDetailPage(
                 onTrackSelectionChange = onTrackSelectionChange,
                 onTrackClick = onTrackClick,
                 onTrackMoreClick = onTrackMoreClick,
+                headerActionsEnabled = headerActionsEnabled,
+                trackClicksEnabled = trackClicksEnabled,
+                trackMoreEnabled = trackMoreEnabled,
+                emptyContent = emptyContent,
+                loadingContent = loadingContent,
             )
             root.bindPlayback(browser)
             if (!libraryLoading && playlist == null && tracks.isEmpty()) {
@@ -159,10 +169,16 @@ private class LegacyPlaylistDetailRootView(context: Context) : LinearLayout(cont
         onTrackSelectionChange: (String, Boolean) -> Unit,
         onTrackClick: (MediaItem, Int) -> Unit,
         onTrackMoreClick: (MediaItem) -> Unit,
+        headerActionsEnabled: Boolean,
+        trackClicksEnabled: Boolean,
+        trackMoreEnabled: Boolean,
+        emptyContent: LegacyPlaylistBlankContent?,
+        loadingContent: LegacyPlaylistBlankContent?,
     ) {
         onReorderTracksCallback = onReorderTracks
+        header.visibility = if (headerActionsEnabled) View.VISIBLE else View.GONE
         trackAdapter.onMoreClick = { item ->
-            if (!editMode) {
+            if (!editMode && trackMoreEnabled) {
                 onTrackMoreClick(item)
             }
         }
@@ -176,9 +192,12 @@ private class LegacyPlaylistDetailRootView(context: Context) : LinearLayout(cont
             onAddOrRemoveClick = onAddOrRemoveClick,
             onToggleAll = onToggleAll,
         )
-        if (libraryLoading) {
+        if (libraryLoading && loadingContent != null) {
+            showBlankContent(loadingContent)
+        } else if (libraryLoading) {
             setLoadingVisible(true)
         } else {
+            emptyContent?.let(::bindBlankContent)
             setEmptyVisible(tracks.isEmpty())
         }
         listView.bindLegacyPortListFooter(
@@ -196,6 +215,7 @@ private class LegacyPlaylistDetailRootView(context: Context) : LinearLayout(cont
             nextSelectedMediaIds = selectedTrackIds,
             nextSelectionOnlyMode = false,
             nextSectioned = false,
+            nextShowMoreActions = trackMoreEnabled,
         )
         if (changed) {
             listView.scheduleLayoutAnimation()
@@ -212,10 +232,36 @@ private class LegacyPlaylistDetailRootView(context: Context) : LinearLayout(cont
                 onTrackSelectionChange(mediaId, selected)
             },
         )
-        listView.setOnItemClickListener { _, _, position, _ ->
-            val item = trackAdapter.itemAt(position) ?: return@setOnItemClickListener
-            onTrackClick(item, position)
+        listView.selector = if (trackClicksEnabled) {
+            context.getDrawable(R.drawable.listview_selector)
+        } else {
+            ColorDrawable(Color.TRANSPARENT)
         }
+        listView.setOnItemClickListener(
+            if (trackClicksEnabled) {
+                android.widget.AdapterView.OnItemClickListener { _, _, position, _ ->
+                    val item = trackAdapter.itemAt(position) ?: return@OnItemClickListener
+                    onTrackClick(item, position)
+                }
+            } else {
+                null
+            },
+        )
+    }
+
+    private fun bindBlankContent(content: LegacyPlaylistBlankContent) {
+        blankView.bind(
+            iconRes = R.drawable.blank_song,
+            primaryText = content.primaryText,
+            secondaryText = content.secondaryText,
+            onClick = content.onClick,
+        )
+    }
+
+    private fun showBlankContent(content: LegacyPlaylistBlankContent) {
+        bindBlankContent(content)
+        blankView.visibility = View.VISIBLE
+        listView.visibility = View.INVISIBLE
     }
 
     fun bindPlayback(player: Player?) {
@@ -439,6 +485,7 @@ private class LegacyPlaylistTrackAdapter : BaseAdapter(), LegacyListDragAdapter<
     private var selectedMediaIds: Set<String> = emptySet()
     private var selectionOnlyMode = false
     private var sectioned = false
+    private var showMoreActions = true
 
     fun updateItems(
         nextItems: List<MediaItem>,
@@ -448,8 +495,10 @@ private class LegacyPlaylistTrackAdapter : BaseAdapter(), LegacyListDragAdapter<
         nextSelectedMediaIds: Set<String>,
         nextSelectionOnlyMode: Boolean,
         nextSectioned: Boolean,
+        nextShowMoreActions: Boolean,
     ): Boolean {
-        val contentChanged = items != nextItems || sectioned != nextSectioned
+        val contentChanged = items != nextItems || sectioned != nextSectioned ||
+            showMoreActions != nextShowMoreActions
         val stateChanged = currentMediaId != nextCurrentMediaId ||
             currentIsPlaying != nextCurrentIsPlaying ||
             editMode != nextEditMode ||
@@ -465,6 +514,7 @@ private class LegacyPlaylistTrackAdapter : BaseAdapter(), LegacyListDragAdapter<
         selectedMediaIds = nextSelectedMediaIds
         selectionOnlyMode = nextSelectionOnlyMode
         sectioned = nextSectioned
+        showMoreActions = nextShowMoreActions
         if (contentChanged) {
             rows = buildPlaylistSongRows(nextItems, nextSectioned)
             notifyDataSetChanged()
@@ -632,7 +682,8 @@ private class LegacyPlaylistTrackAdapter : BaseAdapter(), LegacyListDragAdapter<
         }
         view.findViewById<TextView>(R.id.tv_duration)?.text = item.mediaMetadata.durationMs?.formatPlaylistDuration().orEmpty()
         view.findViewById<View>(R.id.img_action_more)?.apply {
-            isClickable = true
+            visibility = if (showMoreActions) View.VISIBLE else View.GONE
+            isClickable = showMoreActions
             isFocusable = false
             setOnClickListener {
                 onMoreClick(item)

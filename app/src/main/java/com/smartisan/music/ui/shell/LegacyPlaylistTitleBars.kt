@@ -30,6 +30,8 @@ internal fun LegacyPlaylistTitleArea(
     detailTitle: String,
     rootEditMode: Boolean,
     rootSelectedCount: Int,
+    rootActionsEnabled: Boolean = true,
+    detailActionsEnabled: Boolean = true,
     detailEditMode: Boolean,
     predictiveBackProgress: Float? = null,
     predictiveBackExitConsumed: Boolean = false,
@@ -63,6 +65,8 @@ internal fun LegacyPlaylistTitleArea(
                 detailTitle = barTitle,
                 rootEditMode = rootEditing,
                 rootSelectedCount = rootSelectionCount,
+                rootActionsEnabled = rootActionsEnabled,
+                detailActionsEnabled = detailActionsEnabled,
                 detailEditMode = detailEditing,
                 onRootEnterEdit = onRootEnterEdit,
                 onRootExitEdit = onRootExitEdit,
@@ -143,6 +147,8 @@ internal fun TitleBar.setupLegacyPlaylistTitleBar(
     detailTitle: String,
     rootEditMode: Boolean,
     rootSelectedCount: Int,
+    rootActionsEnabled: Boolean = true,
+    detailActionsEnabled: Boolean = true,
     detailEditMode: Boolean,
     onRootEnterEdit: () -> Unit,
     onRootExitEdit: () -> Unit,
@@ -159,6 +165,13 @@ internal fun TitleBar.setupLegacyPlaylistTitleBar(
     setCenterText(if (target == null) context.getString(R.string.tab_play_list) else detailTitle)
 
     when {
+        target == null && !rootActionsEnabled -> {
+            if (onRootBack != null) {
+                addLeftImageView(R.drawable.standard_icon_back_selector).setOnClickListener {
+                    onRootBack()
+                }
+            }
+        }
         target == null && rootEditMode -> {
             addLeftImageView(R.drawable.standard_icon_cancel_selector).setOnClickListener {
                 onRootExitEdit()
@@ -207,10 +220,12 @@ internal fun TitleBar.setupLegacyPlaylistTitleBar(
             addLeftImageView(R.drawable.standard_icon_back_selector).setOnClickListener {
                 onDetailBack()
             }
-            addRightImageView(R.drawable.standard_icon_multi_select_selector).apply {
-                isEnabled = true
-                setOnClickListener {
-                    onDetailEnterEdit()
+            if (detailActionsEnabled) {
+                addRightImageView(R.drawable.standard_icon_multi_select_selector).apply {
+                    isEnabled = true
+                    setOnClickListener {
+                        onDetailEnterEdit()
+                    }
                 }
             }
         }

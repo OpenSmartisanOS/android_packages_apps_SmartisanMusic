@@ -60,21 +60,30 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.dimensionResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import com.smartisan.music.R
+import com.smartisan.music.data.netease.NeteaseOnlinePhase
+import com.smartisan.music.data.netease.NeteaseOnlineState
 import com.smartisan.music.data.playlist.PlaylistCreateResult
 import com.smartisan.music.data.playlist.PlaylistRenameResult
 import com.smartisan.music.data.playlist.PlaylistRepository
 import com.smartisan.music.data.playlist.UserPlaylistDetail
 import com.smartisan.music.data.playlist.UserPlaylistSummary
+import com.smartisan.music.data.settings.OnlineMusicSettings
 import com.smartisan.music.playback.LocalAudioLibrary
 import com.smartisan.music.playback.LocalPlaybackBrowser
 import com.smartisan.music.playback.replaceQueueAndPlay
 import com.smartisan.music.playback.replaceQueueAndPlayShuffled
+import com.smartisan.music.netease.NeteasePlaylistDetail
+import com.smartisan.music.netease.NeteasePlaylistSummary
+import com.smartisan.music.netease.NeteaseResult
+import com.smartisan.music.netease.NeteaseSong
 import com.smartisan.music.ui.shell.songs.LegacyPortSongsPage
 import com.smartisan.music.ui.shell.titlebar.LegacyPortTitleBarShadow
 import com.smartisan.music.ui.widgets.CustomCheckBox
@@ -91,6 +100,7 @@ import java.text.Normalizer
 import java.util.Locale
 
 private const val PlaylistAddModeSlideMillis = 300
+private const val NeteasePlaylistIdPrefix = "netease:"
 internal const val PlaylistRootFooterThreshold = 8
 private val PlaylistAddModeEasing = Easing { fraction ->
     1f - (1f - fraction) * (1f - fraction)
@@ -144,6 +154,10 @@ internal fun LegacyPortPlaylistPage(
     selectedPlaylistIds: Set<String>,
     rootDeleteRequested: Boolean,
     hiddenMediaIds: Set<String>,
+    onlineMusicSettings: OnlineMusicSettings,
+    neteaseState: NeteaseOnlineState,
+    onNeteaseRetry: () -> Unit,
+    onNeteasePlaylistDetail: suspend (Long) -> NeteaseResult<NeteasePlaylistDetail>,
     onTrackMoreClick: (MediaItem) -> Unit,
     onRootEditModeChange: (Boolean) -> Unit,
     onSelectedPlaylistIdsChange: (Set<String>) -> Unit,
@@ -180,23 +194,42 @@ internal fun LegacyPortPlaylistPage(
     var nameDialogRequest by remember { mutableStateOf<LegacyPlaylistNameDialogRequest?>(null) }
     var deleteRequest by remember { mutableStateOf<LegacyPlaylistDeleteRequest?>(null) }
     var detailTitleTransitionActive by remember { mutableStateOf(target != null) }
+    var neteaseDetail by remember { mutableStateOf<NeteasePlaylistDetail?>(null) }
+    var neteaseDetailLoading by remember { mutableStateOf(false) }
+    var neteaseDetailFailed by remember { mutableStateOf(false) }
+    var neteaseDetailRetryVersion by remember { mutableStateOf(0) }
     val detailPredictiveBackState = rememberLegacyPortPredictiveBackState()
+    val neteaseEnabled = onlineMusicSettings.neteaseEnabled
 
     val activePlaylistId = target?.playlistId
-    val activePlaylistFlow = remember(activePlaylistId, playlistRepository) {
-        activePlaylistId?.let(playlistRepository::observePlaylistDetail) ?: flowOf(null)
+    val activeLocalPlaylistId = activePlaylistId.takeUnless { neteaseEnabled }
+    val activePlaylistFlow = remember(activeLocalPlaylistId, playlistRepository) {
+        activeLocalPlaylistId?.let(playlistRepository::observePlaylistDetail) ?: flowOf(null)
     }
     val activePlaylist by activePlaylistFlow.collectAsState(initial = null)
-    val activeSummary = remember(playlists, activePlaylistId) {
-        activePlaylistId?.let { id -> playlists.firstOrNull { playlist -> playlist.id == id } }
+    val activeSummary = remember(playlists, activeLocalPlaylistId) {
+        activeLocalPlaylistId?.let { id -> playlists.firstOrNull { playlist -> playlist.id == id } }
     }
-    val detailTitle = activePlaylist?.name ?: activeSummary?.name ?: target?.title.orEmpty()
-    val detailTracks = remember(activePlaylist, songsById) {
+    val localDetailTracks = remember(activePlaylist, songsById) {
         activePlaylist?.mediaIds?.mapNotNull(songsById::get).orEmpty()
     }
+    val neteaseDetailPlaylist = remember(neteaseDetail) {
+        neteaseDetail?.toLegacyPlaylistDetail()
+    }
+    val neteaseDetailTracks = remember(neteaseDetail) {
+        neteaseDetail?.tracks?.map(NeteaseSong::toLegacyPlaylistMediaItem).orEmpty()
+    }
+    val detailPlaylist = if (neteaseEnabled) neteaseDetailPlaylist else activePlaylist
+    val detailTracks = if (neteaseEnabled) neteaseDetailTracks else localDetailTracks
+    val detailTitle = detailPlaylist?.name ?: activeSummary?.name ?: target?.title.orEmpty()
     val detailPlaylistHasKnownTracks = activePlaylist?.mediaIds?.isNotEmpty() == true ||
         (activePlaylist == null && (activeSummary?.songCount ?: 0) > 0)
-    val detailLibraryLoading = target != null && !libraryLoaded && detailPlaylistHasKnownTracks
+    val detailLibraryLoading = if (neteaseEnabled) {
+        target != null && !neteaseDetailFailed &&
+            (neteaseDetailLoading || neteaseDetail == null)
+    } else {
+        target != null && !libraryLoaded && detailPlaylistHasKnownTracks
+    }
     val addModeExistingIds = remember(addModeTarget, activePlaylistId, activePlaylist) {
         if (addModeTarget?.playlistId == activePlaylistId) {
             activePlaylist?.mediaIds?.toSet().orEmpty()
@@ -208,6 +241,22 @@ internal fun LegacyPortPlaylistPage(
         mutableStateOf<LegacyPlaylistDetailSnapshot?>(null)
     }
     val addModeVisible = addMode && addModeTarget != null
+    val rootPlaylists = remember(neteaseEnabled, neteaseState.phase, neteaseState.playlists, playlists) {
+        if (neteaseEnabled) {
+            if (neteaseState.phase == NeteaseOnlinePhase.Ready) {
+                neteaseState.playlists.map(NeteasePlaylistSummary::toLegacyPlaylistSummary)
+            } else {
+                emptyList()
+            }
+        } else {
+            playlists
+        }
+    }
+    val rootBlankContent = if (neteaseEnabled) {
+        neteaseState.toLegacyPlaylistBlankContent(context, onNeteaseRetry)
+    } else {
+        null
+    }
 
     fun closeAddMode() {
         addMode = false
@@ -218,8 +267,11 @@ internal fun LegacyPortPlaylistPage(
         addModeReturnsToRoot = false
     }
 
-    LaunchedEffect(activePlaylistId, activePlaylist, playlists) {
-        if (activePlaylistId != null && activePlaylist == null && playlists.none { it.id == activePlaylistId }) {
+    LaunchedEffect(activeLocalPlaylistId, activePlaylist, playlists) {
+        if (activeLocalPlaylistId != null &&
+            activePlaylist == null &&
+            playlists.none { it.id == activeLocalPlaylistId }
+        ) {
             target = null
             detailEditMode = false
             addMode = false
@@ -229,11 +281,55 @@ internal fun LegacyPortPlaylistPage(
             selectedAddSongIds = emptySet()
         }
     }
-    LaunchedEffect(activePlaylistId, activePlaylist, detailTitle, detailTracks, detailLibraryLoading) {
+    LaunchedEffect(neteaseEnabled, activePlaylistId, neteaseDetailRetryVersion) {
+        neteaseDetail = null
+        neteaseDetailLoading = false
+        neteaseDetailFailed = false
+        if (!neteaseEnabled) return@LaunchedEffect
+        val playlistId = activePlaylistId?.neteasePlaylistIdOrNull() ?: return@LaunchedEffect
+        neteaseDetailLoading = true
+        when (val result = onNeteasePlaylistDetail(playlistId)) {
+            is NeteaseResult.Success -> {
+                neteaseDetail = result.value
+                neteaseDetailLoading = false
+            }
+            is NeteaseResult.Failure -> {
+                neteaseDetailLoading = false
+                neteaseDetailFailed = true
+            }
+        }
+    }
+    LaunchedEffect(neteaseEnabled, neteaseState.phase) {
+        if (neteaseEnabled && neteaseState.phase == NeteaseOnlinePhase.LoggedOut) {
+            target = null
+            detailEditMode = false
+            selectedTrackIds = emptySet()
+            neteaseDetail = null
+            neteaseDetailLoading = false
+            neteaseDetailFailed = false
+        }
+    }
+    LaunchedEffect(neteaseEnabled) {
+        target = null
+        detailEditMode = false
+        addMode = false
+        addModeTarget = null
+        addModeReturnsToRoot = false
+        selectedTrackIds = emptySet()
+        selectedAddSongIds = emptySet()
+        nameDialogRequest = null
+        deleteRequest = null
+        neteaseDetail = null
+        neteaseDetailLoading = false
+        neteaseDetailFailed = false
+        onRootEditModeChange(false)
+        onSelectedPlaylistIdsChange(emptySet())
+    }
+    LaunchedEffect(activePlaylistId, detailPlaylist, detailTitle, detailTracks, detailLibraryLoading) {
         val playlistId = activePlaylistId ?: return@LaunchedEffect
         retainedDetailSnapshot = LegacyPlaylistDetailSnapshot(
             playlistId = playlistId,
-            playlist = activePlaylist,
+            playlist = detailPlaylist,
             title = detailTitle,
             tracks = detailTracks,
             libraryLoading = detailLibraryLoading,
@@ -272,12 +368,15 @@ internal fun LegacyPortPlaylistPage(
             nameDialogRequest = null
             deleteRequest = null
             retainedDetailSnapshot = null
+            neteaseDetail = null
+            neteaseDetailLoading = false
+            neteaseDetailFailed = false
             detailTitleTransitionActive = false
             detailPredictiveBackState.reset()
         }
     }
-    LaunchedEffect(active, target, addMode) {
-        if (active && (target != null || addMode)) {
+    LaunchedEffect(active, target, addMode, neteaseEnabled) {
+        if (active && !neteaseEnabled && (target != null || addMode)) {
             onLibraryNeeded()
         }
     }
@@ -295,7 +394,7 @@ internal fun LegacyPortPlaylistPage(
         detailEditMode = false
         selectedTrackIds = emptySet()
     }
-    BackHandler(enabled = active && target == null && rootEditMode) {
+    BackHandler(enabled = active && !neteaseEnabled && target == null && rootEditMode) {
         onRootEditModeChange(false)
         onSelectedPlaylistIdsChange(emptySet())
     }
@@ -334,6 +433,8 @@ internal fun LegacyPortPlaylistPage(
                 detailTitle = detailTitle,
                 rootEditMode = rootEditMode,
                 rootSelectedCount = selectedPlaylistIds.size,
+                rootActionsEnabled = !neteaseEnabled,
+                detailActionsEnabled = !neteaseEnabled,
                 detailEditMode = detailEditMode,
                 predictiveBackProgress = detailPredictiveBackState.progress,
                 predictiveBackExitConsumed = detailPredictiveBackState.exitConsumed,
@@ -365,8 +466,10 @@ internal fun LegacyPortPlaylistPage(
                     selectedAddSongIds = emptySet()
                 },
                 onDetailEnterEdit = {
-                    detailEditMode = true
-                    selectedTrackIds = emptySet()
+                    if (!neteaseEnabled) {
+                        detailEditMode = true
+                        selectedTrackIds = emptySet()
+                    }
                 },
                 onDetailExitEdit = {
                     detailEditMode = false
@@ -390,29 +493,32 @@ internal fun LegacyPortPlaylistPage(
                     primaryContent = {
                         LegacyPlaylistRootPage(
                             active = active,
-                            playlists = playlists,
-                            editMode = rootEditMode,
-                            selectedPlaylistIds = selectedPlaylistIds,
+                            playlists = rootPlaylists,
+                            editMode = rootEditMode && !neteaseEnabled,
+                            selectedPlaylistIds = selectedPlaylistIds.takeUnless { neteaseEnabled }
+                                ?: emptySet(),
                             onCreatePlaylist = {
-                                scope.launch {
+                                if (!neteaseEnabled) scope.launch {
                                     nameDialogRequest = LegacyPlaylistNameDialogRequest.Create(
                                         initialName = playlistRepository.suggestNextUntitledName(),
                                     )
                                 }
                             },
                             onRenamePlaylist = { playlist ->
-                                nameDialogRequest = LegacyPlaylistNameDialogRequest.Rename(
-                                    playlistId = playlist.id,
-                                    initialName = playlist.name,
-                                )
+                                if (!neteaseEnabled) {
+                                    nameDialogRequest = LegacyPlaylistNameDialogRequest.Rename(
+                                        playlistId = playlist.id,
+                                        initialName = playlist.name,
+                                    )
+                                }
                             },
                             onPlaylistClick = { playlist ->
-                                if (rootEditMode) {
+                                if (!neteaseEnabled && rootEditMode) {
                                     onSelectedPlaylistIdsChange(
                                         selectedPlaylistIds.togglePlaylistSelection(playlist.id),
                                     )
                                 } else {
-                                    onLibraryNeeded()
+                                    if (!neteaseEnabled) onLibraryNeeded()
                                     target = LegacyPlaylistTarget(
                                         playlistId = playlist.id,
                                         title = playlist.name,
@@ -420,10 +526,14 @@ internal fun LegacyPortPlaylistPage(
                                 }
                             },
                             onPlaylistSelectionChange = { playlist, selected ->
-                                onSelectedPlaylistIdsChange(
-                                    selectedPlaylistIds.withSelection(playlist.id, selected),
-                                )
+                                if (!neteaseEnabled) {
+                                    onSelectedPlaylistIdsChange(
+                                        selectedPlaylistIds.withSelection(playlist.id, selected),
+                                    )
+                                }
                             },
+                            showAddRow = !neteaseEnabled,
+                            blankContent = rootBlankContent,
                             modifier = Modifier.fillMaxSize(),
                         )
                     },
@@ -431,7 +541,7 @@ internal fun LegacyPortPlaylistPage(
                         val detailSnapshot = if (playlistTarget == target) {
                             LegacyPlaylistDetailSnapshot(
                                 playlistId = playlistTarget.playlistId,
-                                playlist = activePlaylist,
+                                playlist = detailPlaylist,
                                 title = detailTitle,
                                 tracks = detailTracks,
                                 libraryLoading = detailLibraryLoading,
@@ -441,7 +551,7 @@ internal fun LegacyPortPlaylistPage(
                                 snapshot.playlistId == playlistTarget.playlistId
                             } ?: LegacyPlaylistDetailSnapshot(
                                 playlistId = playlistTarget.playlistId,
-                                playlist = activePlaylist,
+                                playlist = detailPlaylist,
                                 title = playlistTarget.title,
                                 tracks = detailTracks,
                                 libraryLoading = detailLibraryLoading,
@@ -453,23 +563,28 @@ internal fun LegacyPortPlaylistPage(
                             title = detailSnapshot.title,
                             tracks = detailSnapshot.tracks,
                             libraryLoading = detailSnapshot.libraryLoading,
-                            editMode = detailEditMode,
+                            editMode = detailEditMode && !neteaseEnabled,
                             selectedTrackIds = selectedTrackIds,
                             browser = browser,
                             onShuffle = {
-                                if (detailSnapshot.tracks.isEmpty()) {
+                                if (neteaseEnabled || detailSnapshot.tracks.isEmpty()) {
                                     return@LegacyPlaylistDetailPage
                                 }
                                 browser.replaceQueueAndPlayShuffled(detailSnapshot.tracks)
                             },
                             onDeletePlaylist = {
-                                deleteRequest = LegacyPlaylistDeleteRequest.DetailPlaylist
+                                if (!neteaseEnabled) {
+                                    deleteRequest = LegacyPlaylistDeleteRequest.DetailPlaylist
+                                }
                             },
                             onEditModeChange = { enabled ->
-                                detailEditMode = enabled
-                                selectedTrackIds = emptySet()
+                                if (!neteaseEnabled) {
+                                    detailEditMode = enabled
+                                    selectedTrackIds = emptySet()
+                                }
                             },
                             onAddOrRemoveClick = {
+                                if (neteaseEnabled) return@LegacyPlaylistDetailPage
                                 if (selectedTrackIds.isEmpty()) {
                                     onLibraryNeeded()
                                     addModeTarget = target
@@ -488,6 +603,7 @@ internal fun LegacyPortPlaylistPage(
                                 }
                             },
                             onReorderTracks = { orderedMediaIds ->
+                                if (neteaseEnabled) return@LegacyPlaylistDetailPage
                                 val playlistId = target?.playlistId ?: return@LegacyPlaylistDetailPage
                                 scope.launch {
                                     playlistRepository.reorderVisibleMediaIds(playlistId, orderedMediaIds)
@@ -497,6 +613,7 @@ internal fun LegacyPortPlaylistPage(
                                 selectedTrackIds = selectedTrackIds.withSelection(mediaId, selected)
                             },
                             onTrackClick = { item, index ->
+                                if (neteaseEnabled) return@LegacyPlaylistDetailPage
                                 if (detailEditMode) {
                                     selectedTrackIds = selectedTrackIds.togglePlaylistSelection(item.mediaId)
                                     return@LegacyPlaylistDetailPage
@@ -504,6 +621,42 @@ internal fun LegacyPortPlaylistPage(
                                 browser.replaceQueueAndPlay(detailSnapshot.tracks, index)
                             },
                             onTrackMoreClick = onTrackMoreClick,
+                            headerActionsEnabled = !neteaseEnabled,
+                            trackClicksEnabled = !neteaseEnabled,
+                            trackMoreEnabled = !neteaseEnabled,
+                            emptyContent = if (neteaseEnabled) {
+                                LegacyPlaylistBlankContent(
+                                    primaryText = stringResource(
+                                        if (neteaseDetailFailed) {
+                                            R.string.netease_playlist_detail_error
+                                        } else {
+                                            R.string.netease_playlist_detail_empty
+                                        },
+                                    ),
+                                    secondaryText = stringResource(
+                                        if (neteaseDetailFailed) {
+                                            R.string.netease_playlists_retry
+                                        } else {
+                                            R.string.netease_playlist_detail_empty_hint
+                                        },
+                                    ),
+                                    onClick = if (neteaseDetailFailed) {
+                                        { neteaseDetailRetryVersion += 1 }
+                                    } else {
+                                        null
+                                    },
+                                )
+                            } else {
+                                null
+                            },
+                            loadingContent = if (neteaseEnabled) {
+                                LegacyPlaylistBlankContent(
+                                    primaryText = stringResource(R.string.netease_playlist_detail_loading),
+                                    secondaryText = stringResource(R.string.netease_playlists_loading_hint),
+                                )
+                            } else {
+                                null
+                            },
                             modifier = Modifier.fillMaxSize(),
                         )
                     },
@@ -677,49 +830,139 @@ internal fun LegacyPortPlaylistPage(
     )
 }
 
+internal fun NeteasePlaylistSummary.toLegacyPlaylistSummary(): UserPlaylistSummary {
+    return UserPlaylistSummary(
+        id = "$NeteasePlaylistIdPrefix$id",
+        name = name,
+        songCount = trackCount ?: 0,
+        createdAt = 0L,
+        updatedAt = 0L,
+    )
+}
+
+internal fun NeteaseSong.toLegacyPlaylistMediaItem(): MediaItem {
+    val artistText = artists.joinToString(separator = " / ", transform = { artist -> artist.name })
+    return MediaItem.Builder()
+        .setMediaId("netease:$id")
+        .setMediaMetadata(
+            MediaMetadata.Builder()
+                .setTitle(name)
+                .setDisplayTitle(name)
+                .setArtist(artistText)
+                .setAlbumTitle(album?.name)
+                .setDurationMs(durationMillis)
+                .build(),
+        )
+        .build()
+}
+
+private fun NeteasePlaylistDetail.toLegacyPlaylistDetail(): UserPlaylistDetail {
+    return UserPlaylistDetail(
+        id = "$NeteasePlaylistIdPrefix${playlist.id}",
+        name = playlist.name,
+        mediaIds = tracks.map { song -> "netease:${song.id}" },
+        createdAt = 0L,
+        updatedAt = 0L,
+    )
+}
+
+private fun String.neteasePlaylistIdOrNull(): Long? {
+    return takeIf { value -> value.startsWith(NeteasePlaylistIdPrefix) }
+        ?.removePrefix(NeteasePlaylistIdPrefix)
+        ?.toLongOrNull()
+        ?.takeIf { id -> id > 0L }
+}
+
+private fun NeteaseOnlineState.toLegacyPlaylistBlankContent(
+    context: Context,
+    onRetry: () -> Unit,
+): LegacyPlaylistBlankContent {
+    return when (phase) {
+        NeteaseOnlinePhase.LoggedOut -> LegacyPlaylistBlankContent(
+            primaryText = context.getString(R.string.netease_playlists_login_required),
+            secondaryText = context.getString(R.string.netease_playlists_login_hint),
+        )
+        NeteaseOnlinePhase.Disabled,
+        NeteaseOnlinePhase.CheckingSession,
+        NeteaseOnlinePhase.LoadingPlaylists,
+        -> LegacyPlaylistBlankContent(
+            primaryText = context.getString(R.string.netease_playlists_loading),
+            secondaryText = context.getString(R.string.netease_playlists_loading_hint),
+        )
+        NeteaseOnlinePhase.Ready -> LegacyPlaylistBlankContent(
+            primaryText = context.getString(R.string.netease_playlists_empty),
+            secondaryText = context.getString(R.string.netease_playlists_empty_hint),
+        )
+        NeteaseOnlinePhase.Error -> LegacyPlaylistBlankContent(
+            primaryText = context.getString(R.string.netease_playlists_error),
+            secondaryText = context.getString(R.string.netease_playlists_retry),
+            onClick = onRetry,
+        )
+    }
+}
+
 internal class LegacyPlaylistBlankView(
     context: Context,
     iconRes: Int,
     primaryText: String,
     secondaryText: String,
 ) : LinearLayout(context) {
+    private val iconView = ImageView(context).apply {
+        alpha = 0.42f
+    }
+    private val primaryView = TextView(context).apply {
+        gravity = Gravity.CENTER
+        setTextColor(context.getColor(R.color.text_disabled_gray))
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 25f)
+        includeFontPadding = false
+    }
+    private val secondaryView = TextView(context).apply {
+        gravity = Gravity.CENTER
+        setTextColor(context.getColor(R.color.text_disabled_gray))
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+        includeFontPadding = false
+    }
+
     init {
         orientation = VERTICAL
         gravity = Gravity.CENTER
         setBackgroundResource(R.drawable.account_background)
         addView(
-            ImageView(context).apply {
-                setImageResource(iconRes)
-                alpha = 0.42f
-            },
+            iconView,
             LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
                 bottomMargin = dp(16)
             },
         )
         addView(
-            TextView(context).apply {
-                text = primaryText
-                gravity = Gravity.CENTER
-                setTextColor(context.getColor(R.color.text_disabled_gray))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 25f)
-                includeFontPadding = false
-            },
+            primaryView,
             LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT),
         )
-        if (secondaryText.isNotBlank()) {
-            addView(
-                TextView(context).apply {
-                    text = secondaryText
-                    gravity = Gravity.CENTER
-                    setTextColor(context.getColor(R.color.text_disabled_gray))
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-                    includeFontPadding = false
-                },
-                LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-                    topMargin = dp(10)
-                },
-            )
-        }
+        addView(
+            secondaryView,
+            LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(10)
+            },
+        )
+        bind(
+            iconRes = iconRes,
+            primaryText = primaryText,
+            secondaryText = secondaryText,
+        )
+    }
+
+    fun bind(
+        iconRes: Int,
+        primaryText: String,
+        secondaryText: String,
+        onClick: (() -> Unit)? = null,
+    ) {
+        iconView.setImageResource(iconRes)
+        primaryView.text = primaryText
+        secondaryView.text = secondaryText
+        secondaryView.visibility = if (secondaryText.isBlank()) View.GONE else View.VISIBLE
+        isClickable = onClick != null
+        isFocusable = onClick != null
+        setOnClickListener(onClick?.let { action -> View.OnClickListener { action() } })
     }
 }
 
