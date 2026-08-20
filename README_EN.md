@@ -19,7 +19,7 @@ Smartisan never saw itself as a company concerned with visuals alone. A beautifu
 
 Smartisan Music is one of the clearest expressions of that idea. Its turntable, tonearm, scratching, and vinyl crackle make digital music feel tangible, while songs, albums, and the library remain calm and legible. The physical playfulness should never come at the expense of playback or organization; what deserves to be preserved is the balance between texture, order, and utility.
 
-Smartisan OS has left the stage, so this project uses Smartisan Music 8.1.0 as its visual and interaction reference and rebuilds it with a modern Android stack. The interface retains the original XML layouts, drawables, NinePatch assets, selectors, animation timing, and view hierarchy wherever practical. Media scanning, background playback, queues, favorites, playlists, and persistence are rebuilt entirely on public Android APIs. The current UI and playback service still read only audio stored on the device. The project now contains an isolated NetEase Cloud Music API foundation, but it is not yet connected to the UI, account flow, or online playback.
+Smartisan OS has left the stage, so this project uses Smartisan Music 8.1.0 as its visual and interaction reference and rebuilds it with a modern Android stack. The interface retains the original XML layouts, drawables, NinePatch assets, selectors, animation timing, and view hierarchy wherever practical. Media scanning, background playback, queues, favorites, playlists, and persistence are rebuilt entirely on public Android APIs. Playback still reads only audio stored on the device. An optional Online Mode currently adds NetEase QR sign-in and read-only viewing of the signed-in account's playlists and tracks through the existing playlist UI.
 
 ## Improvements over the original
 
@@ -51,10 +51,11 @@ Smartisan OS has left the stage, so this project uses Smartisan Music 8.1.0 as i
 - Sleep timer and system music volume control
 - External audio opening, audio-file sharing, and MediaStore-backed media deletion
 - Custom artist separators, bottom-navigation order, and pinned items
+- Optional NetEase Online Mode with QR sign-in and read-only account playlists and tracks
 
 ## Network, local media, and permissions
 
-The app declares `INTERNET` for the future NetEase search, metadata, lyric, and stream-resolution integration. This version does not create the API client or make a request at startup, and the existing UI and playback service remain local-only. If a user explicitly imports a login Cookie in a future UI, it is encrypted on-device with Android Keystore and sent only to allowlisted NetEase domains. Local songs, artwork, lyrics, and library metadata are not uploaded.
+The app declares `INTERNET`. Online Mode is off by default, so startup does not create a NetEase client or initiate NetEase requests. When enabled, it validates the signed-in account and loads the account's playlist list and playlist tracks on demand; search and online playback are not connected yet. Login Cookies captured by the QR flow are encrypted on-device with Android Keystore and sent only to allowlisted NetEase domains. WebView Cookies are cleared when the login dialog closes, and local songs, artwork, lyrics, and library metadata are not uploaded.
 
 - Android 13 and later use `READ_MEDIA_AUDIO` to read device audio. Android 8.1 through Android 12 use the version-limited `READ_EXTERNAL_STORAGE` permission.
 - `FOREGROUND_SERVICE_MEDIA_PLAYBACK` is used only to keep user-initiated playback and its media notification active in the background.

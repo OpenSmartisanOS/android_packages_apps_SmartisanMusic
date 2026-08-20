@@ -214,6 +214,47 @@ class LegacyPortRootTitleBarInstrumentedTest {
     }
 
     @Test
+    fun onlinePlaylistTitleBarDoesNotExposeLocalEditOrSearchActions() {
+        composeRule.setContent {
+            LegacyPortStableRootTitleBarHost(
+                destination = MusicDestination.Playlist,
+                visible = true,
+                songsEditMode = false,
+                selectedSongCount = 0,
+                albumEditMode = false,
+                selectedAlbumCount = 0,
+                albumViewMode = AlbumViewMode.List,
+                artistAlbumViewMode = AlbumViewMode.List,
+                playlistEditMode = false,
+                playlistSelectedCount = 0,
+                playlistActionsEnabled = false,
+                onEnterSongsEditMode = {},
+                onExitSongsEditMode = {},
+                onRequestDeleteSelected = {},
+                onEnterAlbumEditMode = {},
+                onExitAlbumEditMode = {},
+                onToggleAlbumViewMode = {},
+                onRootBack = null,
+                onSearchClick = {},
+                onOpenMoreSettings = {},
+                onEnterPlaylistEditMode = {},
+                onExitPlaylistEditMode = {},
+                onDeleteSelectedPlaylists = {},
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
+        composeRule.runOnIdle {
+            val titleBar = composeRule.activity.titleBarsByTitle().getValue(
+                composeRule.activity.getString(MusicDestination.Playlist.labelRes),
+            )
+            assertEquals(View.VISIBLE, titleBar.visibility)
+            assertEquals(null, titleBar.getLeftViewByIndex(0))
+            assertEquals(null, titleBar.getRightViewByIndex(0))
+        }
+    }
+
+    @Test
     fun stableTitleBarHostSurvivesNonStableBottomDestination() {
         lateinit var selectDestination: (MusicDestination) -> Unit
 

@@ -1,7 +1,9 @@
 # NetEase API module
 
-This Android library is an inactive network foundation for Smartisan Music. The app depends on
-the module, but does not create a client or make a request until a later UI integration does so.
+This Android library is the isolated NetEase network foundation for Smartisan Music. The app
+creates a client only after the user explicitly enables Online Mode. The current UI uses it for
+account validation and read-only account playlists and tracks through the app's existing playlist
+pages; playback and the rest of the library UI remain local-only.
 
 ```kotlin
 val client = NeteaseApiClient.create(applicationContext)
