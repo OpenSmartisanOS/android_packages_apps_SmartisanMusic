@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Android 12+ always creates a system splash window. Keep it visually empty. -->
+    <style name="Theme.Music.Starting" parent="@style/Theme.Music">
+        <item name="android:windowSplashScreenBackground">@color/page_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_screen_empty</item>
+        <item name="android:windowSplashScreenAnimationDuration">0</item>
+    </style>
+
+</resources>

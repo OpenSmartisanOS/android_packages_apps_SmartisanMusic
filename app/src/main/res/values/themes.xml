@@ -6,6 +6,8 @@
         <item name="android:windowLightNavigationBar">@bool/light_system_bars</item>
     </style>
 
+    <style name="Theme.Music.Starting" parent="@style/Theme.Music" />
+
     <style name="MmsDialogTheme" parent="@android:style/Theme.Dialog">
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowFrame">@null</item>
